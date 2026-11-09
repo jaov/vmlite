@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // buildVirtInstallArgs translates cfg and libvirtURI into the virt-install
@@ -16,19 +17,50 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 		"--name", cfg.Name,
 		"--memory", strconv.Itoa(cfg.Memory),
 		"--vcpus", strconv.Itoa(cfg.CPUs),
-		"--disk", fmt.Sprintf("size=%d", cfg.DiskSize),
-		"--os-variant", cfg.OSVariant,
-		"--graphics", "none",
 	}
 
-	// Kernel arguments are only valid with a location/kernel install, so only
-	// request the serial console when an install tree is configured. Without an
-	// install source there is no install phase to wait for, so do not attach to
-	// the guest console.
-	if cfg.InstallURL != "" {
+	imageMode := strings.TrimSpace(cfg.Image) != ""
+	if !imageMode {
+		args = append(args, "--disk", fmt.Sprintf("size=%d", cfg.DiskSize))
+	}
+
+	args = append(args,
+		"--os-variant", cfg.OSVariant,
+		"--graphics", "none",
+	)
+
+	switch {
+	case imageMode:
+		overlay, err := cfg.overlayPath()
+		if err != nil {
+			return nil, err
+		}
+		args = append(args,
+			"--import",
+			"--disk", fmt.Sprintf("path=%s,format=qcow2", overlay),
+			"--noautoconsole",
+		)
+		if strings.TrimSpace(cfg.CloudInit) != "" {
+			seed, err := cfg.seedPath()
+			if err != nil {
+				return nil, err
+			}
+			args = append(args,
+				"--disk", fmt.Sprintf("path=%s,device=cdrom,readonly=on", seed),
+				"--sysinfo", "type=smbios,system.serial=ds=nocloud",
+			)
+		}
+		args = append(args,
+			"--events", "on_reboot=restart,on_poweroff=destroy,on_crash=restart",
+		)
+
+	case cfg.InstallURL != "":
+		// Kernel arguments are only valid with a location/kernel install.
 		args = append(args, "--location", cfg.InstallURL,
 			"--extra-args", "console=ttyS0,115200n8")
-	} else {
+
+	default:
+		// Nothing to install: define and start the domain, then return.
 		args = append(args, "--install", "no_install=yes", "--noautoconsole")
 	}
 
@@ -64,6 +96,15 @@ func RunVirtInstall(cfg *Config, libvirtURI string) error {
 		return err
 	}
 
+	if strings.TrimSpace(cfg.Image) != "" {
+		if _, err := prepareOverlay(cfg); err != nil {
+			return err
+		}
+	}
+	if _, err := prepareSeed(cfg); err != nil {
+		return err
+	}
+
 	cmd := exec.Command("virt-install", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -72,5 +113,6 @@ func RunVirtInstall(cfg *Config, libvirtURI string) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("virt-install failed: %w", err)
 	}
+
 	return nil
 }

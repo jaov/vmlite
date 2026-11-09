@@ -15,6 +15,9 @@ type Config struct {
 	DiskSize   int     `json:"disk_size"` // in GiB
 	OSVariant  string  `json:"os_variant"`
 	InstallURL string  `json:"install_url,omitempty"`
+	Image      string  `json:"image,omitempty"`
+	DiskPath   string  `json:"disk_path,omitempty"`
+	CloudInit  string  `json:"cloud_init,omitempty"`
 	Mounts     []Mount `json:"mounts"`
 }
 
@@ -61,6 +64,18 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.OSVariant) == "" {
 		return fmt.Errorf("os_variant is required")
 	}
+
+	hasImage := strings.TrimSpace(c.Image) != ""
+	if hasImage && strings.TrimSpace(c.InstallURL) != "" {
+		return fmt.Errorf("image and install_url are mutually exclusive")
+	}
+	if strings.TrimSpace(c.CloudInit) != "" && !hasImage {
+		return fmt.Errorf("cloud_init requires image")
+	}
+	if strings.TrimSpace(c.DiskPath) != "" && !hasImage {
+		return fmt.Errorf("disk_path requires image")
+	}
+
 	for i, m := range c.Mounts {
 		if strings.TrimSpace(m.Source) == "" {
 			return fmt.Errorf("mounts[%d].source is required", i)

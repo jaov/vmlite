@@ -43,6 +43,9 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := CheckImageTools(cfg); err != nil {
+		return err
+	}
 
 	// An explicit --connect flag wins over VMLITE_CONNECT, which in turn wins
 	// over automatic detection.

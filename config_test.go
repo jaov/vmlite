@@ -55,6 +55,33 @@ func TestLoadConfigValid(t *testing.T) {
 	}
 }
 
+func TestLoadConfigImageFields(t *testing.T) {
+	path := writeConfigFile(t, `{
+		"name": "image-vm",
+		"memory": 2048,
+		"cpus": 2,
+		"disk_size": 10,
+		"os_variant": "ubuntu24.04",
+		"image": "/tmp/ubuntu.qcow2",
+		"disk_path": "/tmp/image-vm.qcow2",
+		"cloud_init": "/tmp/user-data"
+	}`)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Image != "/tmp/ubuntu.qcow2" {
+		t.Errorf("Image = %q", cfg.Image)
+	}
+	if cfg.DiskPath != "/tmp/image-vm.qcow2" {
+		t.Errorf("DiskPath = %q", cfg.DiskPath)
+	}
+	if cfg.CloudInit != "/tmp/user-data" {
+		t.Errorf("CloudInit = %q", cfg.CloudInit)
+	}
+}
+
 func TestLoadConfigValidation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -95,6 +122,21 @@ func TestLoadConfigValidation(t *testing.T) {
 			name:    "mount missing target",
 			content: `{"name": "vm", "memory": 1024, "cpus": 1, "disk_size": 5, "os_variant": "debian12", "mounts": [{"source": "/tmp/data"}]}`,
 			wantErr: "mounts[0].target is required",
+		},
+		{
+			name:    "image and install url",
+			content: `{"name": "vm", "memory": 1024, "cpus": 1, "disk_size": 5, "os_variant": "debian12", "image": "/tmp/base.qcow2", "install_url": "https://example.invalid/"}`,
+			wantErr: "mutually exclusive",
+		},
+		{
+			name:    "cloud init without image",
+			content: `{"name": "vm", "memory": 1024, "cpus": 1, "disk_size": 5, "os_variant": "debian12", "cloud_init": "/tmp/user-data"}`,
+			wantErr: "cloud_init requires image",
+		},
+		{
+			name:    "disk path without image",
+			content: `{"name": "vm", "memory": 1024, "cpus": 1, "disk_size": 5, "os_variant": "debian12", "disk_path": "/tmp/overlay.qcow2"}`,
+			wantErr: "disk_path requires image",
 		},
 	}
 
