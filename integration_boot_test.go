@@ -59,13 +59,8 @@ func freeBytes(t *testing.T, path string) uint64 {
 
 func stageImage(t *testing.T, src, dst string) {
 	t.Helper()
-	if err := os.Link(src, dst); err == nil {
-		if err := os.Chmod(dst, 0o644); err != nil {
-			t.Fatalf("chmod staged image: %v", err)
-		}
-		return
-	}
-
+	// Copy rather than hardlink: libvirt's dynamic ownership can chown the
+	// backing chain, which would otherwise change the user's cached image.
 	in, err := os.Open(src)
 	if err != nil {
 		t.Fatalf("open image: %v", err)
@@ -148,7 +143,7 @@ func TestBootableGuest(t *testing.T) {
 	imageSrc := requireBootIntegration(t)
 
 	variant := envOr("VMLITE_TEST_OS_VARIANT", "ubuntu24.04")
-	sshUser := envOr("VMLITE_TEST_SSH_USER", "ubuntu")
+	sshUser := envOr("VMLITE_TEST_SSH_USER", "vmlite")
 	workRoot := envOr("VMLITE_TEST_WORKDIR", "/var/tmp")
 
 	workDir, err := os.MkdirTemp(workRoot, "vmlite-it-boot-")
@@ -194,7 +189,18 @@ func TestBootableGuest(t *testing.T) {
 	}
 
 	userData := filepath.Join(workDir, "user-data")
-	userDataContent := fmt.Sprintf("#cloud-config\nusers:\n  - default\nssh_authorized_keys:\n  - %s\nssh_pwauth: false\npackage_update: false\n", strings.TrimSpace(string(pub)))
+	userDataContent := fmt.Sprintf(`#cloud-config
+users:
+  - name: %s
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - %s
+ssh_pwauth: false
+package_update: false
+`, sshUser, strings.TrimSpace(string(pub)))
 	if err := os.WriteFile(userData, []byte(userDataContent), 0o644); err != nil {
 		t.Fatalf("write user-data: %v", err)
 	}

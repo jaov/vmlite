@@ -64,8 +64,12 @@ This downloads the Ubuntu 24.04 minimal cloud image (~250 MiB) to
 ./scripts/fetch-cloud-image.sh /var/tmp/ubuntu-24.04.qcow2
 ```
 
-Debian 12 genericcloud was tried during development but its cloud-init did not
-pick up the seed in this setup; Ubuntu minimal is the tested image.
+Debian 12 genericcloud was retested with the final seed and SMBIOS hint. Its
+cloud-init still did not install the SSH key, and offline inspection of the
+image showed its cloud kernel has `# CONFIG_NET_9P is not set`. The 9p mount
+therefore cannot work in a Debian cloud guest at all. Ubuntu minimal is the
+tested image; Debian image mode would need a kernel with 9p support (or a
+virtiofs-based mount implementation).
 
 ### Run the boot test
 
@@ -88,7 +92,7 @@ Environment variables:
 |---|---|
 | `VMLITE_TEST_IMAGE` | path to the qcow2 cloud image (required) |
 | `VMLITE_TEST_OS_VARIANT` | `--os-variant` value (default `ubuntu24.04`) |
-| `VMLITE_TEST_SSH_USER` | guest SSH user (default `ubuntu`) |
+| `VMLITE_TEST_SSH_USER` | guest user created by the seed (default `vmlite`) |
 | `VMLITE_TEST_WORKDIR` | work directory (default `/var/tmp`) |
 | `VMLITE_TEST_KEEP=1` | keep the domain, overlay, seed, and work dir |
 
