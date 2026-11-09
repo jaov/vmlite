@@ -161,18 +161,22 @@ curl -fL -o /var/tmp/vmlite-cache/openbsd79.iso \
 VMLITE_TEST_OPENBSD_ISO=/var/tmp/vmlite-cache/openbsd79.iso \
   go test -tags integration -run TestOpenBSDInstallerBoot -v ./...
 
-VMLITE_TEST_NETBSD_ISO=/path/to/netbsd.iso \
+curl -fL -o /var/tmp/vmlite-cache/netbsd-boot.iso \
+  https://ftp.fau.de/netbsd/NetBSD-10.0/amd64/installation/cdrom/boot.iso
+
+VMLITE_TEST_NETBSD_ISO=/var/tmp/vmlite-cache/netbsd-boot.iso \
   go test -tags integration -run TestNetBSDInstallerBoot -v ./...
 ```
 
 The test creates an ISO-backed VM with VNC on `127.0.0.1`, asserts the domain
 is running with a CDROM and VNC device, and confirms the VNC TCP port is
-reachable. It does not complete the installer.
+reachable. It does not complete the installer. For NetBSD, the `boot.iso`
+network-installer boot medium is sufficient for this smoke test.
 
-| Installer | Status |
-|---|---|
-| OpenBSD 7.9 | PASS |
-| NetBSD | gated by `VMLITE_TEST_NETBSD_ISO` |
+| Installer | Media | Status |
+|---|---|---|
+| OpenBSD 7.9 | `install79.iso` | PASS |
+| NetBSD 10.0 | `boot.iso` | PASS |
 
 FreeBSD notes:
 
