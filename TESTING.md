@@ -70,8 +70,8 @@ Tested images:
 |---|---|---|---|
 | Ubuntu 24.04 | `ubuntu` | `ubuntu-24.04-minimal-cloudimg-amd64.img` | SSH + scp + 9p |
 | Debian 12 | `debian` | `debian-12-generic-amd64.qcow2` | SSH + scp + 9p |
-| Fedora 42 | `fedora` | Cloud Base Generic | profile defined, not yet verified |
-| Arch | `arch` | official cloudimg | profile defined, not yet verified |
+| Fedora 42 | `fedora` | Cloud Base Generic | SSH + scp + 9p |
+| Arch | `arch` | official cloudimg | SSH + scp + 9p |
 | FreeBSD 15.1 | `freebsd` | BASIC-CLOUDINIT ufs | profile defined, not yet verified |
 
 Debian has two image flavours. Use **generic**, not genericcloud:
