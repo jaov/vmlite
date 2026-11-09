@@ -47,9 +47,9 @@ VMLITE_TEST_SYSTEM=1 go test -tags integration -v ./...
 
 ## Bootable guest tests
 
-`TestBootableGuest` boots a real cloud image, waits for SSH, and verifies the
-9p mount inside the guest. It is opt-in because it needs an image and takes
-about 40 seconds.
+`TestBootableGuest` boots a real cloud image, waits for SSH, copies a marker
+file with scp, and then verifies the 9p mount for profiles that support it. It
+is opt-in because it needs an image and takes about 30-40 seconds.
 
 ### Get an image
 
@@ -66,10 +66,13 @@ This downloads the Ubuntu 24.04 minimal cloud image (~250 MiB) to
 
 Tested images:
 
-| Distro | Image | Boot test |
-|---|---|---|
-| Ubuntu 24.04 | `ubuntu-24.04-minimal-cloudimg-amd64.img` | SSH + 9p |
-| Debian 12 | `debian-12-generic-amd64.qcow2` | SSH + 9p |
+| Distro | Profile | Image | Boot test |
+|---|---|---|---|
+| Ubuntu 24.04 | `ubuntu` | `ubuntu-24.04-minimal-cloudimg-amd64.img` | SSH + scp + 9p |
+| Debian 12 | `debian` | `debian-12-generic-amd64.qcow2` | SSH + scp + 9p |
+| Fedora 42 | `fedora` | Cloud Base Generic | profile defined, not yet verified |
+| Arch | `arch` | official cloudimg | profile defined, not yet verified |
+| FreeBSD 15.1 | `freebsd` | BASIC-CLOUDINIT ufs | profile defined, not yet verified |
 
 Debian has two image flavours. Use **generic**, not genericcloud:
 
@@ -77,9 +80,8 @@ Debian has two image flavours. Use **generic**, not genericcloud:
 curl -fL -o ~/.cache/vmlite/debian-12-generic-amd64.qcow2 \
   https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2
 
+VMLITE_TEST_PROFILE=debian \
 VMLITE_TEST_IMAGE="$HOME/.cache/vmlite/debian-12-generic-amd64.qcow2" \
-VMLITE_TEST_OS_VARIANT=debian12 \
-VMLITE_TEST_SSH_USER=debian \
   go test -tags integration -run TestBootableGuest -v ./...
 ```
 
@@ -91,14 +93,15 @@ boot test.
 ### Run the boot test
 
 ```bash
+VMLITE_TEST_PROFILE=ubuntu \
 VMLITE_TEST_IMAGE="$HOME/.cache/vmlite/ubuntu-24.04-minimal-cloudimg-amd64.img" \
   go test -tags integration -run TestBootableGuest -v ./...
 ```
 
 Requirements:
 
-- `/dev/kvm`, system `qemu:///system`, `qemu-img`, `ssh`, `ssh-keygen`, and
-  `xorrisofs`/`genisoimage`/`mkisofs`.
+- `/dev/kvm`, system `qemu:///system`, `qemu-img`, `ssh`, `scp`, `ssh-keygen`,
+  and `xorrisofs`/`genisoimage`/`mkisofs`.
 - At least 3 GiB free in the test work directory (default `/var/tmp`).
 - The test pre-creates a qemu-writable overlay and stages the base image so the
   `libvirt-qemu` user can read them.
@@ -107,14 +110,16 @@ Environment variables:
 
 | Variable | Meaning |
 |---|---|
+| `VMLITE_TEST_PROFILE` | `ubuntu`, `debian`, `fedora`, `arch`, or `freebsd` (default `ubuntu`) |
 | `VMLITE_TEST_IMAGE` | path to the qcow2 cloud image (required) |
-| `VMLITE_TEST_OS_VARIANT` | `--os-variant` value (default `ubuntu24.04`) |
-| `VMLITE_TEST_SSH_USER` | guest user created by the seed (default `vmlite`) |
+| `VMLITE_TEST_OS_VARIANT` | override the profile's `--os-variant` |
+| `VMLITE_TEST_SSH_USER` | override the guest user created by the seed |
 | `VMLITE_TEST_WORKDIR` | work directory (default `/var/tmp`) |
 | `VMLITE_TEST_KEEP=1` | keep the domain, overlay, seed, and work dir |
 
-The guest check waits for cloud-init, mounts the test directory over 9p, and
-compares a marker file.
+The guest check detects `uname -s`, copies a marker file over scp, waits for
+cloud-init when the profile expects it, and mounts the shared directory using
+the profile's mount style (`linux9p`, `freebsd9p`, or none).
 
 ### Why system mode?
 
