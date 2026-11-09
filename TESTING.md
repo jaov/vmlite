@@ -262,7 +262,9 @@ Cloud-image behavior:
 - An explicit `disk.path` is reused as a user-managed disk. An implicit default
   path (`<image-dir>/<name>-overlay.qcow2`) that already exists is an error.
 - `source.cloud_init` is a user-data file. vmlite generates a persistent
-  NoCloud seed ISO next to the overlay and adds the SMBIOS `ds=nocloud` hint.
+  NoCloud seed ISO next to the overlay, attaches it as a read-only raw disk,
+  and adds the SMBIOS `ds=nocloud` hint. A disk avoids CD-ROM detection races
+  during early cloud-init.
 - vmlite sets `on_reboot=restart`/`on_crash=restart` so a guest reboot does not
   destroy the domain.
 

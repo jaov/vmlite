@@ -106,7 +106,7 @@ func TestBuildVirtInstallArgsCloudInit(t *testing.T) {
 	seed := filepath.Join(dir, "demo-seed.iso")
 	if !containsAll(got,
 		"--import",
-		"path="+seed+",device=cdrom,readonly=on",
+		"path="+seed+",format=raw,readonly=on",
 		"--sysinfo", "type=smbios,system.serial=ds=nocloud",
 		"--network", "user",
 	) {

@@ -125,7 +125,7 @@ func buildSourceArgs(cfg *Config) ([]string, error) {
 				return nil, err
 			}
 			args = append(args,
-				"--disk", fmt.Sprintf("path=%s,device=cdrom,readonly=on", seed),
+				"--disk", fmt.Sprintf("path=%s,format=raw,readonly=on", seed),
 				"--sysinfo", "type=smbios,system.serial=ds=nocloud",
 			)
 		}

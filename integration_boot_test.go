@@ -364,7 +364,7 @@ ssh_pwauth: false
 		t.Fatalf("dumpxml: %v\n%s", err, xmlOut)
 	}
 	for _, want := range []string{
-		"device='cdrom'",
+		"-seed.iso",
 		"ds=nocloud",
 		"network='default'",
 		"accessmode='mapped'",
