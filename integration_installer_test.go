@@ -5,6 +5,7 @@ package main
 import (
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -88,6 +89,19 @@ func waitForVNC(t *testing.T, uri, name string, timeout time.Duration) string {
 func testInstallerBoot(t *testing.T, distro, env string) {
 	t.Helper()
 	iso := installerISO(t, env)
+
+	// virt-install creates a transient directory pool for the ISO directory.
+	// Remove it unless it existed before this test.
+	isoPool := filepath.Base(filepath.Dir(iso))
+	_, poolErr := virsh(t, systemURI, "pool-info", isoPool)
+	poolExisted := poolErr == nil
+	t.Cleanup(func() {
+		if os.Getenv("VMLITE_TEST_KEEP") == "1" || poolExisted {
+			return
+		}
+		_, _ = virsh(t, systemURI, "pool-destroy", isoPool)
+		_, _ = virsh(t, systemURI, "pool-undefine", isoPool)
+	})
 
 	name := uniqueName()
 	registerCleanup(t, systemURI, name)
