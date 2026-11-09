@@ -135,6 +135,21 @@ The guest check detects `uname -s`, copies a marker file over scp, waits for
 cloud-init when the profile expects it, and mounts the shared directory using
 the profile's mount style (`linux9p`, `freebsd9p`, or none).
 
+On a host with limited disk, skip the image copy and put the overlay on tmpfs:
+
+```bash
+mkdir -p /var/tmp/vmlite-cache
+VMLITE_TEST_NO_STAGE=1 VMLITE_TEST_WORKDIR=/tmp \
+VMLITE_TEST_PROFILE=debian \
+VMLITE_TEST_IMAGE=/var/tmp/vmlite-cache/debian-12-generic-amd64.qcow2 \
+  go test -tags integration -run TestBootableGuest -v ./...
+```
+
+Keep test images in a user-owned, non-sticky directory (for example
+`/var/tmp/vmlite-cache`). libvirt's dynamic ownership may chown the base image,
+and a chowned file directly under sticky `/var/tmp` cannot be removed without
+root. The FreeBSD profile already defaults to `/tmp` with no staging.
+
 FreeBSD notes:
 
 - The BASIC-CLOUDINIT image performs a first-boot `pkg upgrade` and reboots
