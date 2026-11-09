@@ -147,6 +147,7 @@ func TestBuildVirtInstallArgsISO(t *testing.T) {
 	dir := t.TempDir()
 	iso := filepath.Join(dir, "install.iso")
 	cfg := baseTestConfig()
+	cfg.OSVariant = ""
 	cfg.Source = Source{Type: sourceISO, Path: iso}
 
 	got, err := buildVirtInstallArgs(&cfg, systemURI)
@@ -154,7 +155,12 @@ func TestBuildVirtInstallArgsISO(t *testing.T) {
 		t.Fatalf("buildVirtInstallArgs: %v", err)
 	}
 
-	if !containsAll(got, "--disk", "size=5", "--cdrom", iso, "--noautoconsole") {
+	if !containsAll(got,
+		"--os-variant", "detect=on,require=off",
+		"--disk", "size=5",
+		"--cdrom", iso,
+		"--noautoconsole",
+	) {
 		t.Fatalf("args missing iso options: %q", got)
 	}
 }

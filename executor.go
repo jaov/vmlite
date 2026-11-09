@@ -19,8 +19,15 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 		"--vcpus", strconv.Itoa(cfg.CPUs),
 	}
 
-	if strings.TrimSpace(cfg.OSVariant) != "" {
-		args = append(args, "--os-variant", cfg.OSVariant)
+	osVariant := strings.TrimSpace(cfg.OSVariant)
+	if osVariant == "" && cfg.Source.Type == sourceISO {
+		// Installer media often has no osinfo entry (for example OpenBSD).
+		// Ask virt-install to detect, but fall back to generic instead of
+		// failing the install.
+		osVariant = "detect=on,require=off"
+	}
+	if osVariant != "" {
+		args = append(args, "--os-variant", osVariant)
 	}
 	if cfg.Firmware == firmwareUEFI {
 		args = append(args, "--boot", "uefi")

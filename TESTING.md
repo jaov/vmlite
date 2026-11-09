@@ -150,6 +150,30 @@ Keep test images in a user-owned, non-sticky directory (for example
 and a chowned file directly under sticky `/var/tmp` cannot be removed without
 root. The FreeBSD profile already defaults to `/tmp` with no staging.
 
+### Installer ISO tests
+
+Installer media can be smoke-tested without performing an installation:
+
+```bash
+curl -fL -o /var/tmp/vmlite-cache/openbsd79.iso \
+  https://cdn.openbsd.org/pub/OpenBSD/7.9/amd64/install79.iso
+
+VMLITE_TEST_OPENBSD_ISO=/var/tmp/vmlite-cache/openbsd79.iso \
+  go test -tags integration -run TestOpenBSDInstallerBoot -v ./...
+
+VMLITE_TEST_NETBSD_ISO=/path/to/netbsd.iso \
+  go test -tags integration -run TestNetBSDInstallerBoot -v ./...
+```
+
+The test creates an ISO-backed VM with VNC on `127.0.0.1`, asserts the domain
+is running with a CDROM and VNC device, and confirms the VNC TCP port is
+reachable. It does not complete the installer.
+
+| Installer | Status |
+|---|---|
+| OpenBSD 7.9 | PASS |
+| NetBSD | gated by `VMLITE_TEST_NETBSD_ISO` |
+
 FreeBSD notes:
 
 - The BASIC-CLOUDINIT image performs a first-boot `pkg upgrade` and reboots
@@ -206,7 +230,7 @@ Image-based VM example:
 | `none` | Empty disk, no installation; define and start the VM |
 | `cloud_image` | qcow2/raw base image with an overlay; optional cloud-init seed |
 | `install_tree` | Linux install tree URL; optional `extra_args` |
-| `iso` | Installer ISO; pair with `graphics: "vnc"` or a serial console |
+| `iso` | Installer ISO; pair with `graphics: "vnc"` or a serial console. An empty `os_variant` falls back to `detect=on,require=off` so distros without an osinfo entry (for example OpenBSD) still boot. |
 | `disk` | Import an existing installed disk |
 | `pxe` | Network boot |
 
