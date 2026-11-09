@@ -72,7 +72,7 @@ Tested images:
 | Debian 12 | `debian` | `debian-12-generic-amd64.qcow2` | SSH + scp + 9p |
 | Fedora 42 | `fedora` | Cloud Base Generic | SSH + scp + 9p |
 | Arch | `arch` | official cloudimg | SSH + scp + 9p |
-| FreeBSD 15.1 | `freebsd` | BASIC-CLOUDINIT ufs | profile defined, not yet verified |
+| FreeBSD 15.1 | `freebsd` | BASIC-CLOUDINIT ufs | SSH + scp; p9fs present, mount not asserted |
 
 Debian has two image flavours. Use **generic**, not genericcloud:
 
@@ -89,6 +89,20 @@ The `genericcloud` image uses Debian's cloud kernel, which has
 `# CONFIG_NET_9P is not set`; 9p mounts cannot work there. The **generic** image
 uses the standard kernel, includes cloud-init, and passes the full SSH + 9p
 boot test.
+
+Fedora and Arch images:
+
+```bash
+curl -fL -o ~/.cache/vmlite/fedora42-cloud.qcow2 \
+  https://download.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-42-1.1.x86_64.qcow2
+curl -fL -o ~/.cache/vmlite/arch-cloudimg.qcow2 \
+  https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
+
+VMLITE_TEST_PROFILE=fedora VMLITE_TEST_IMAGE=$HOME/.cache/vmlite/fedora42-cloud.qcow2 \
+  go test -tags integration -run TestBootableGuest -v ./...
+VMLITE_TEST_PROFILE=arch VMLITE_TEST_IMAGE=$HOME/.cache/vmlite/arch-cloudimg.qcow2 \
+  go test -tags integration -run TestBootableGuest -v ./...
+```
 
 ### Run the boot test
 
@@ -120,6 +134,18 @@ Environment variables:
 The guest check detects `uname -s`, copies a marker file over scp, waits for
 cloud-init when the profile expects it, and mounts the shared directory using
 the profile's mount style (`linux9p`, `freebsd9p`, or none).
+
+FreeBSD notes:
+
+- The BASIC-CLOUDINIT image performs a first-boot `pkg upgrade` and reboots
+  itself. The test uses `VMLITE_TEST_KEEP`-independent lease re-resolution and a
+  12-minute SSH window to survive that reboot.
+- The image has no sudo/doas and uses `nuageinit`; `virtio_p9fs` is present and
+  autoloads, but the profile does not assert a guest mount yet. The test
+  therefore verifies boot, SSH, and scp only.
+- The profile defaults to `VMLITE_TEST_WORKDIR=/tmp` (tmpfs) and no image
+  staging because the decompressed image is ~2.5 GiB. The image itself must be
+  readable by the qemu user (for example `/var/tmp/freebsd15.qcow2`).
 
 ### Why system mode?
 

@@ -23,35 +23,43 @@ func envOr(key, fallback string) string {
 }
 
 type bootProfile struct {
-	OSVariant string
-	SSHUser   string
-	OS        string
-	SudoGroup string
-	Shell     string
-	Mount     string // linux9p, freebsd9p, none
-	CloudInit bool
+	OSVariant  string
+	SSHUser    string
+	OS         string
+	SudoGroup  string
+	Shell      string
+	Mount      string // linux9p, freebsd9p, none
+	CloudInit  bool
+	WorkRoot   string
+	NoStage    bool
+	SSHTimeout time.Duration
 }
 
 var bootProfiles = map[string]bootProfile{
 	"ubuntu": {
 		OSVariant: "ubuntu24.04", SSHUser: "vmlite", OS: "Linux",
 		SudoGroup: "sudo", Shell: "/bin/bash", Mount: "linux9p", CloudInit: true,
+		WorkRoot: "/var/tmp", SSHTimeout: 5 * time.Minute,
 	},
 	"debian": {
 		OSVariant: "debian12", SSHUser: "vmlite", OS: "Linux",
 		SudoGroup: "sudo", Shell: "/bin/bash", Mount: "linux9p", CloudInit: true,
+		WorkRoot: "/var/tmp", SSHTimeout: 5 * time.Minute,
 	},
 	"fedora": {
 		OSVariant: "fedora42", SSHUser: "vmlite", OS: "Linux",
 		SudoGroup: "wheel", Shell: "/bin/bash", Mount: "linux9p", CloudInit: true,
+		WorkRoot: "/var/tmp", SSHTimeout: 5 * time.Minute,
 	},
 	"arch": {
 		OSVariant: "archlinux", SSHUser: "vmlite", OS: "Linux",
 		SudoGroup: "wheel", Shell: "/bin/bash", Mount: "linux9p", CloudInit: true,
+		WorkRoot: "/var/tmp", SSHTimeout: 5 * time.Minute,
 	},
 	"freebsd": {
 		OSVariant: "freebsd14.2", SSHUser: "vmlite", OS: "FreeBSD",
-		SudoGroup: "wheel", Shell: "/bin/sh", Mount: "freebsd9p", CloudInit: true,
+		SudoGroup: "wheel", Shell: "/bin/sh", Mount: "none", CloudInit: false,
+		WorkRoot: "/tmp", NoStage: true, SSHTimeout: 12 * time.Minute,
 	},
 }
 
@@ -134,19 +142,43 @@ func sshGuest(t *testing.T, userName, host, key, command string, timeout time.Du
 	return string(out), err
 }
 
-func waitForSSH(t *testing.T, userName, host, key string, timeout time.Duration) {
+func domainIPv4(t *testing.T, uri, name string) string {
+	t.Helper()
+	out, err := virsh(t, uri, "domifaddr", name, "--source", "lease")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		for i, field := range fields {
+			if field == "ipv4" && i+1 < len(fields) {
+				return strings.Split(fields[i+1], "/")[0]
+			}
+		}
+	}
+	return ""
+}
+
+// waitForGuestSSH re-resolves the DHCP lease on every attempt, so it survives
+// the first-boot package-update reboot some images perform.
+func waitForGuestSSH(t *testing.T, uri, name, userName, key string, timeout time.Duration) string {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
-	var lastOut string
-	var lastErr error
+	var lastIP, lastOut string
 	for time.Now().Before(deadline) {
-		lastOut, lastErr = sshGuest(t, userName, host, key, "true", 10*time.Second)
-		if lastErr == nil {
-			return
+		ip := domainIPv4(t, uri, name)
+		if ip != "" {
+			lastIP = ip
+			out, err := sshGuest(t, userName, ip, key, "true", 10*time.Second)
+			if err == nil {
+				return ip
+			}
+			lastOut = out
 		}
 		time.Sleep(2 * time.Second)
 	}
-	t.Fatalf("SSH to %s@%s not ready after %s: %v\n%s", userName, host, timeout, lastErr, lastOut)
+	t.Fatalf("SSH to %s not ready after %s (last IP %q):\n%s", userName, timeout, lastIP, lastOut)
+	return ""
 }
 
 func scpGuest(t *testing.T, userName, host, key, src, dst string) error {
@@ -172,29 +204,6 @@ func scpGuest(t *testing.T, userName, host, key, src, dst string) error {
 	return nil
 }
 
-func waitForLease(t *testing.T, uri, name string, timeout time.Duration) string {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	var last string
-	for time.Now().Before(deadline) {
-		out, err := virsh(t, uri, "domifaddr", name, "--source", "lease")
-		last = out
-		if err == nil {
-			for _, line := range strings.Split(out, "\n") {
-				fields := strings.Fields(line)
-				for i, field := range fields {
-					if field == "ipv4" && i+1 < len(fields) {
-						return strings.Split(fields[i+1], "/")[0]
-					}
-				}
-			}
-		}
-		time.Sleep(2 * time.Second)
-	}
-	t.Fatalf("no DHCP lease for %s within %s:\n%s", name, timeout, last)
-	return ""
-}
-
 func TestBootableGuest(t *testing.T) {
 	imageSrc := requireBootIntegration(t)
 
@@ -205,7 +214,18 @@ func TestBootableGuest(t *testing.T) {
 	}
 	variant := envOr("VMLITE_TEST_OS_VARIANT", profile.OSVariant)
 	sshUser := envOr("VMLITE_TEST_SSH_USER", profile.SSHUser)
-	workRoot := envOr("VMLITE_TEST_WORKDIR", "/var/tmp")
+	workRoot := envOr("VMLITE_TEST_WORKDIR", profile.WorkRoot)
+	if workRoot == "" {
+		workRoot = "/var/tmp"
+	}
+	noStage := profile.NoStage
+	if v := os.Getenv("VMLITE_TEST_NO_STAGE"); v != "" {
+		noStage = v == "1"
+	}
+	sshTimeout := profile.SSHTimeout
+	if sshTimeout <= 0 {
+		sshTimeout = 5 * time.Minute
+	}
 
 	workDir, err := os.MkdirTemp(workRoot, "vmlite-it-boot-")
 	if err != nil {
@@ -226,8 +246,13 @@ func TestBootableGuest(t *testing.T) {
 		os.RemoveAll(workDir)
 	})
 
-	if free := freeBytes(t, workDir); free < 3<<30 {
-		t.Skipf("not enough free space in %s: %d bytes available, want at least 3 GiB", workDir, free)
+	minFree := uint64(3 << 30)
+	if noStage {
+		minFree = 2 << 30
+	}
+	if free := freeBytes(t, workDir); free < minFree {
+		t.Skipf("not enough free space in %s: %d bytes available, want at least %d GiB",
+			workDir, free, minFree>>30)
 	}
 
 	sharedDir := filepath.Join(workDir, "shared")
@@ -249,8 +274,25 @@ func TestBootableGuest(t *testing.T) {
 		t.Fatalf("read public key: %v", err)
 	}
 
+	var mountScript string
+	switch profile.Mount {
+	case "linux9p":
+		mountScript = "mkdir -p /mnt/shared && mount -t 9p -o trans=virtio,version=9p2000.L shared_data /mnt/shared && cp /mnt/shared/marker.txt /var/tmp/vmlite-marker.txt && chmod 0644 /var/tmp/vmlite-marker.txt"
+	case "freebsd9p":
+		mountScript = "kldload virtio_p9fs 2>/dev/null || true; mkdir -p /mnt/shared; mount -t p9fs shared_data /mnt/shared && cp /mnt/shared/marker.txt /var/tmp/vmlite-marker.txt && chmod 0644 /var/tmp/vmlite-marker.txt"
+	case "none":
+	default:
+		t.Fatalf("unknown mount mode %q for profile %q", profile.Mount, profileName)
+	}
+	runcmd := ""
+	if mountScript != "" {
+		runcmd = fmt.Sprintf("runcmd:\n  - [sh, -c, '%s']\n", mountScript)
+	}
+
 	userData := filepath.Join(workDir, "user-data")
 	userDataContent := fmt.Sprintf(`#cloud-config
+package_update: false
+package_upgrade: false
 users:
   - name: %s
     groups: [%s]
@@ -260,14 +302,16 @@ users:
     ssh_authorized_keys:
       - %s
 ssh_pwauth: false
-package_update: false
-`, sshUser, profile.SudoGroup, profile.Shell, strings.TrimSpace(string(pub)))
+%s`, sshUser, profile.SudoGroup, profile.Shell, strings.TrimSpace(string(pub)), runcmd)
 	if err := os.WriteFile(userData, []byte(userDataContent), 0o644); err != nil {
 		t.Fatalf("write user-data: %v", err)
 	}
 
-	stagedImage := filepath.Join(workDir, "base.qcow2")
-	stageImage(t, imageSrc, stagedImage)
+	stagedImage := imageSrc
+	if !noStage {
+		stagedImage = filepath.Join(workDir, "base.qcow2")
+		stageImage(t, imageSrc, stagedImage)
+	}
 
 	// The overlay is created here with world-writable permissions so the
 	// system qemu user can write to it. vmlite reuses an explicit disk_path.
@@ -326,8 +370,7 @@ package_update: false
 		}
 	}
 
-	ip := waitForLease(t, systemURI, name, 3*time.Minute)
-	waitForSSH(t, sshUser, ip, keyPath, 3*time.Minute)
+	ip := waitForGuestSSH(t, systemURI, name, sshUser, keyPath, sshTimeout)
 
 	osOut, err := sshGuest(t, sshUser, ip, keyPath, "uname -s", 30*time.Second)
 	if err != nil {
@@ -365,34 +408,17 @@ package_update: false
 		}
 	}
 
-	var mountCmd string
-	switch profile.Mount {
-	case "linux9p":
-		mountCmd = `set -e
-sudo modprobe 9pnet_virtio
-sudo mkdir -p /mnt/shared
-sudo mount -t 9p -o trans=virtio,version=9p2000.L shared_data /mnt/shared
-cat /mnt/shared/marker.txt
-`
-	case "freebsd9p":
-		mountCmd = `set -e
-sudo kldload virtio_p9fs 2>/dev/null || true
-sudo mkdir -p /mnt/shared
-sudo mount -t p9fs shared_data /mnt/shared
-cat /mnt/shared/marker.txt
-`
-	case "none":
-	default:
-		t.Fatalf("unknown mount mode %q for profile %q", profile.Mount, profileName)
-	}
-
-	if mountCmd != "" {
-		result, err := sshGuest(t, sshUser, ip, keyPath, mountCmd, 2*time.Minute)
-		if err != nil {
-			t.Fatalf("9p check failed: %v\n%s", err, result)
+	if profile.Mount != "none" {
+		deadline := time.Now().Add(2 * time.Minute)
+		var last string
+		for time.Now().Before(deadline) {
+			out, err := sshGuest(t, sshUser, ip, keyPath, "cat /var/tmp/vmlite-marker.txt", 15*time.Second)
+			last = out
+			if err == nil && strings.Contains(out, marker) {
+				return
+			}
+			time.Sleep(2 * time.Second)
 		}
-		if !strings.Contains(result, marker) {
-			t.Fatalf("marker %q not found in guest output:\n%s", marker, result)
-		}
+		t.Fatalf("9p marker %q not found in guest (runcmd mount failed?):\n%s", marker, last)
 	}
 }
