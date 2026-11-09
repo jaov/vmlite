@@ -243,6 +243,11 @@ func TestBootableGuest(t *testing.T) {
 			t.Logf("VMLITE_TEST_KEEP=1: leaving work dir %s", workDir)
 			return
 		}
+		// virt-install creates a transient directory pool for an explicit
+		// disk path; remove it along with the work dir.
+		pool := filepath.Base(workDir)
+		_, _ = virsh(t, systemURI, "pool-destroy", pool)
+		_, _ = virsh(t, systemURI, "pool-undefine", pool)
 		os.RemoveAll(workDir)
 	})
 
