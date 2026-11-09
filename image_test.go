@@ -20,6 +20,24 @@ func fakeQEMUImg(t *testing.T) (binDir, logPath string) {
 	return binDir, logPath
 }
 
+func fakeQEMUImgInfo(t *testing.T, format string) (binDir, logPath string) {
+	t.Helper()
+	binDir = t.TempDir()
+	logPath = filepath.Join(binDir, "args.log")
+	script := fmt.Sprintf(`#!/bin/sh
+if [ "$1" = "info" ]; then
+  printf '{"format":"%s"}\n'
+  exit 0
+fi
+printf '%%s\n' "$@" > %q
+exit 0
+`, format, logPath)
+	if err := os.WriteFile(filepath.Join(binDir, "qemu-img"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake qemu-img: %v", err)
+	}
+	return binDir, logPath
+}
+
 func TestOverlayPathDefault(t *testing.T) {
 	cfg := &Config{Name: "demo", Source: Source{Type: sourceCloudImage, Path: "/tmp/images/base.qcow2"}}
 
@@ -92,6 +110,35 @@ func TestPrepareOverlay(t *testing.T) {
 	want := []string{"create", "-f", "qcow2", "-F", "qcow2", "-b", base, overlay, "10G"}
 	if got := strings.Split(strings.TrimSpace(string(data)), "\n"); !reflect.DeepEqual(got, want) {
 		t.Fatalf("qemu-img args = %q, want %q", got, want)
+	}
+}
+
+func TestPrepareOverlayAutoBase(t *testing.T) {
+	binDir, logPath := fakeQEMUImgInfo(t, diskFormatRaw)
+	t.Setenv("PATH", binDir)
+
+	base := filepath.Join(t.TempDir(), "base.img")
+	if err := os.WriteFile(base, []byte("base"), 0o644); err != nil {
+		t.Fatalf("write base image: %v", err)
+	}
+	overlay := filepath.Join(t.TempDir(), "overlay.qcow2")
+
+	cfg := &Config{
+		Name:   "demo",
+		Source: Source{Type: sourceCloudImage, Path: base},
+		Disk:   Disk{Size: 10, Path: overlay, Format: diskFormatAuto},
+	}
+	if _, err := prepareOverlay(cfg); err != nil {
+		t.Fatalf("prepareOverlay: %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read qemu-img log: %v", err)
+	}
+	args := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if !containsAll(args, "-F", diskFormatRaw) {
+		t.Fatalf("qemu-img args = %q, want -F raw", args)
 	}
 }
 
@@ -306,49 +353,69 @@ func TestPrepareSeedMissingUserData(t *testing.T) {
 }
 
 func TestSourceDiskFormat(t *testing.T) {
-	tests := []struct {
-		format  string
-		want    string
-		wantErr bool
-	}{
-		{"", diskFormatQCOW2, false},
-		{diskFormatQCOW2, diskFormatQCOW2, false},
-		{diskFormatRaw, diskFormatRaw, false},
-		{diskFormatAuto, "", true},
-	}
-	for _, tc := range tests {
-		cfg := &Config{Disk: Disk{Format: tc.format}}
-		got, err := cfg.sourceDiskFormat()
-		if tc.wantErr {
-			if err == nil {
-				t.Fatalf("format %q: expected error", tc.format)
+	t.Run("explicit", func(t *testing.T) {
+		for _, tc := range []struct {
+			format string
+			want   string
+		}{
+			{diskFormatQCOW2, diskFormatQCOW2},
+			{diskFormatRaw, diskFormatRaw},
+		} {
+			cfg := &Config{Source: Source{Type: sourceDisk, Path: "/tmp/disk"}, Disk: Disk{Format: tc.format}}
+			got, err := cfg.sourceDiskFormat()
+			if err != nil {
+				t.Fatalf("format %q: %v", tc.format, err)
 			}
-			continue
+			if got != tc.want {
+				t.Fatalf("format %q: got %q, want %q", tc.format, got, tc.want)
+			}
 		}
+	})
+
+	t.Run("auto", func(t *testing.T) {
+		binDir, _ := fakeQEMUImgInfo(t, diskFormatRaw)
+		t.Setenv("PATH", binDir)
+		cfg := &Config{Source: Source{Type: sourceDisk, Path: "/tmp/disk"}, Disk: Disk{Format: diskFormatAuto}}
+		got, err := cfg.sourceDiskFormat()
 		if err != nil {
-			t.Fatalf("format %q: %v", tc.format, err)
+			t.Fatalf("sourceDiskFormat: %v", err)
 		}
-		if got != tc.want {
-			t.Fatalf("format %q: got %q, want %q", tc.format, got, tc.want)
+		if got != diskFormatRaw {
+			t.Fatalf("format = %q, want %q", got, diskFormatRaw)
 		}
-	}
+	})
 }
 
 func TestExtraDiskFormat(t *testing.T) {
-	tests := []struct {
-		format string
-		want   string
-	}{
-		{"", diskFormatRaw},
-		{diskFormatAuto, diskFormatRaw},
-		{diskFormatRaw, diskFormatRaw},
-		{diskFormatQCOW2, diskFormatQCOW2},
-	}
-	for _, tc := range tests {
-		if got := extraDiskFormat(ExtraDisk{Format: tc.format}); got != tc.want {
-			t.Fatalf("format %q: got %q, want %q", tc.format, got, tc.want)
+	t.Run("explicit", func(t *testing.T) {
+		for _, tc := range []struct {
+			format string
+			want   string
+		}{
+			{diskFormatRaw, diskFormatRaw},
+			{diskFormatQCOW2, diskFormatQCOW2},
+		} {
+			got, err := extraDiskFormat(ExtraDisk{Format: tc.format, Path: "/tmp/disk"})
+			if err != nil {
+				t.Fatalf("format %q: %v", tc.format, err)
+			}
+			if got != tc.want {
+				t.Fatalf("format %q: got %q, want %q", tc.format, got, tc.want)
+			}
 		}
-	}
+	})
+
+	t.Run("auto", func(t *testing.T) {
+		binDir, _ := fakeQEMUImgInfo(t, diskFormatRaw)
+		t.Setenv("PATH", binDir)
+		got, err := extraDiskFormat(ExtraDisk{Format: diskFormatAuto, Path: "/tmp/config.iso"})
+		if err != nil {
+			t.Fatalf("extraDiskFormat: %v", err)
+		}
+		if got != diskFormatRaw {
+			t.Fatalf("format = %q, want %q", got, diskFormatRaw)
+		}
+	})
 }
 
 func TestCheckImageTools(t *testing.T) {
@@ -400,6 +467,36 @@ func TestCheckImageTools(t *testing.T) {
 	t.Run("install tree needs no tools", func(t *testing.T) {
 		t.Setenv("PATH", t.TempDir())
 		if err := CheckImageTools(&Config{Source: Source{Type: sourceInstallTree, URL: "https://example.invalid"}}); err != nil {
+			t.Fatalf("CheckImageTools: %v", err)
+		}
+	})
+
+	t.Run("source disk auto requires qemu-img", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		cfg := &Config{Source: Source{Type: sourceDisk, Path: "/tmp/disk"}, Disk: Disk{Format: diskFormatAuto}}
+		err := CheckImageTools(cfg)
+		if err == nil || !strings.Contains(err.Error(), "qemu-img") {
+			t.Fatalf("err = %v, want qemu-img error", err)
+		}
+	})
+
+	t.Run("extra disk auto requires qemu-img", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		cfg := &Config{ExtraDisks: []ExtraDisk{{Path: "/tmp/config.iso", Format: diskFormatAuto}}}
+		err := CheckImageTools(cfg)
+		if err == nil || !strings.Contains(err.Error(), "qemu-img") {
+			t.Fatalf("err = %v, want qemu-img error", err)
+		}
+	})
+
+	t.Run("explicit disk formats need no qemu-img", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		cfg := &Config{
+			Source:     Source{Type: sourceDisk, Path: "/tmp/disk"},
+			Disk:       Disk{Format: diskFormatRaw},
+			ExtraDisks: []ExtraDisk{{Path: "/tmp/config.iso", Format: diskFormatRaw}},
+		}
+		if err := CheckImageTools(cfg); err != nil {
 			t.Fatalf("CheckImageTools: %v", err)
 		}
 	})

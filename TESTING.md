@@ -167,8 +167,11 @@ Image-based VM example:
 Other fields:
 
 - `firmware`: `bios` (default) or `uefi`.
-- `disk.size` is GiB. `disk.path` is optional. `disk.format` accepts `qcow2`
-  or `raw` (set it explicitly for raw images).
+- `disk.size` is GiB. `disk.path` is optional. `disk.format` accepts `auto`,
+  `qcow2`, or `raw`. `auto` detects base/source images with `qemu-img`; newly
+  created empty disks default to qcow2.
+- `extra_disks[].format` also accepts `auto`; qemu-img detects the media format.
+  `qemu-img` must be installed when a format is auto-detected.
 - `mounts[].type`: `9p` (default), `none`, or `virtiofs` (reserved; currently
   rejected).
 - `network.mode`: `auto`, `default`, `user`, or `bridge` (with `network.bridge`).

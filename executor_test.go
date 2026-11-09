@@ -189,17 +189,21 @@ func TestBuildVirtInstallArgsDiskSource(t *testing.T) {
 	}
 }
 
-func TestBuildVirtInstallArgsDiskSourceAutoRejected(t *testing.T) {
+func TestBuildVirtInstallArgsDiskSourceAuto(t *testing.T) {
+	binDir, _ := fakeQEMUImgInfo(t, diskFormatRaw)
+	t.Setenv("PATH", binDir)
+
+	disk := filepath.Join(t.TempDir(), "freebsd.raw")
 	cfg := baseTestConfig()
-	cfg.Source = Source{Type: sourceDisk, Path: "/tmp/freebsd.qcow2"}
+	cfg.Source = Source{Type: sourceDisk, Path: disk}
 	cfg.Disk = Disk{Format: diskFormatAuto}
 
-	_, err := buildVirtInstallArgs(&cfg, systemURI)
-	if err == nil {
-		t.Fatal("buildVirtInstallArgs succeeded, want error")
+	got, err := buildVirtInstallArgs(&cfg, systemURI)
+	if err != nil {
+		t.Fatalf("buildVirtInstallArgs: %v", err)
 	}
-	if !strings.Contains(err.Error(), "auto") {
-		t.Fatalf("error = %q, want auto format error", err)
+	if !containsAll(got, "--import", "path="+disk+",format=raw") {
+		t.Fatalf("args missing detected raw import: %q", got)
 	}
 }
 
@@ -306,6 +310,25 @@ func TestBuildVirtInstallArgsExtraDisks(t *testing.T) {
 	want := "path=" + filepath.Join(dir, "config.iso") + ",device=cdrom,format=raw,readonly=on"
 	if !containsAll(got, "--disk", want) {
 		t.Fatalf("args missing extra disk: %q", got)
+	}
+}
+
+func TestBuildVirtInstallArgsExtraDiskAuto(t *testing.T) {
+	binDir, _ := fakeQEMUImgInfo(t, diskFormatRaw)
+	t.Setenv("PATH", binDir)
+
+	dir := t.TempDir()
+	diskPath := filepath.Join(dir, "config.iso")
+	cfg := baseTestConfig()
+	cfg.ExtraDisks = []ExtraDisk{{Path: diskPath, Device: "cdrom", Format: diskFormatAuto}}
+
+	got, err := buildVirtInstallArgs(&cfg, systemURI)
+	if err != nil {
+		t.Fatalf("buildVirtInstallArgs: %v", err)
+	}
+	want := "path=" + diskPath + ",device=cdrom,format=raw"
+	if !containsAll(got, "--disk", want) {
+		t.Fatalf("args missing detected extra disk: %q", got)
 	}
 }
 

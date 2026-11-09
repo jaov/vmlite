@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,9 +9,39 @@ import (
 	"strings"
 )
 
+// detectImageFormat asks qemu-img for a disk image's format.
+func detectImageFormat(path string) (string, error) {
+	cmd := exec.Command("qemu-img", "info", "--output=json", path)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("detect format of %q: %w", path, err)
+	}
+
+	var info struct {
+		Format string `json:"format"`
+	}
+	if err := json.Unmarshal(out, &info); err != nil {
+		return "", fmt.Errorf("parse qemu-img info for %q: %w", path, err)
+	}
+	if info.Format == "" {
+		return "", fmt.Errorf("qemu-img reported no format for %q", path)
+	}
+	return info.Format, nil
+}
+
 // CheckImageTools verifies the host tools required by the configured source.
 func CheckImageTools(cfg *Config) error {
-	if cfg.Source.Type == sourceCloudImage {
+	needsQEMUImg := cfg.Source.Type == sourceCloudImage
+	if cfg.Source.Type == sourceDisk && (cfg.Disk.Format == "" || cfg.Disk.Format == diskFormatAuto) {
+		needsQEMUImg = true
+	}
+	for _, d := range cfg.ExtraDisks {
+		if d.Format == "" || d.Format == diskFormatAuto {
+			needsQEMUImg = true
+		}
+	}
+
+	if needsQEMUImg {
 		if _, err := exec.LookPath("qemu-img"); err != nil {
 			return fmt.Errorf("required binary \"qemu-img\" not found in PATH: %w", err)
 		}
@@ -58,11 +89,15 @@ func (c *Config) seedPath() (string, error) {
 }
 
 // baseFormat is the backing format used when creating the overlay.
-func (c *Config) baseFormat() string {
-	if c.Disk.Format == diskFormatRaw {
-		return diskFormatRaw
+func (c *Config) baseFormat() (string, error) {
+	switch c.Disk.Format {
+	case "", diskFormatAuto:
+		return detectImageFormat(c.Source.Path)
+	case diskFormatQCOW2, diskFormatRaw:
+		return c.Disk.Format, nil
+	default:
+		return "", fmt.Errorf("unsupported disk.format %q", c.Disk.Format)
 	}
-	return diskFormatQCOW2
 }
 
 // newDiskFormat is the format for a newly created primary disk.
@@ -76,24 +111,25 @@ func (c *Config) newDiskFormat() string {
 // sourceDiskFormat is the format of an imported source disk.
 func (c *Config) sourceDiskFormat() (string, error) {
 	switch c.Disk.Format {
-	case "", diskFormatQCOW2:
-		return diskFormatQCOW2, nil
-	case diskFormatRaw:
-		return diskFormatRaw, nil
-	case diskFormatAuto:
-		return "", fmt.Errorf("disk.format %q is not supported for source.type %q yet; set %q or %q",
-			diskFormatAuto, sourceDisk, diskFormatQCOW2, diskFormatRaw)
+	case "", diskFormatAuto:
+		return detectImageFormat(c.Source.Path)
+	case diskFormatQCOW2, diskFormatRaw:
+		return c.Disk.Format, nil
 	default:
 		return "", fmt.Errorf("unsupported disk.format %q", c.Disk.Format)
 	}
 }
 
 // extraDiskFormat is the format of an attached extra disk.
-func extraDiskFormat(d ExtraDisk) string {
-	if d.Format == diskFormatQCOW2 {
-		return diskFormatQCOW2
+func extraDiskFormat(d ExtraDisk) (string, error) {
+	switch d.Format {
+	case "", diskFormatAuto:
+		return detectImageFormat(d.Path)
+	case diskFormatQCOW2, diskFormatRaw:
+		return d.Format, nil
+	default:
+		return "", fmt.Errorf("unsupported extra disk format %q", d.Format)
 	}
-	return diskFormatRaw
 }
 
 // isoBuilder picks an ISO creation tool compatible with virt-install's
@@ -136,9 +172,14 @@ func prepareOverlay(cfg *Config) (string, error) {
 		return "", fmt.Errorf("check disk image %q: %w", overlay, err)
 	}
 
+	baseFormat, err := cfg.baseFormat()
+	if err != nil {
+		return "", err
+	}
+
 	cmd := exec.Command("qemu-img", "create",
 		"-f", diskFormatQCOW2,
-		"-F", cfg.baseFormat(),
+		"-F", baseFormat,
 		"-b", image,
 		overlay,
 		fmt.Sprintf("%dG", cfg.Disk.Size),

@@ -57,7 +57,11 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 		if device == "" {
 			device = "disk"
 		}
-		spec := fmt.Sprintf("path=%s,device=%s,format=%s", path, device, extraDiskFormat(d))
+		format, err := extraDiskFormat(d)
+		if err != nil {
+			return nil, err
+		}
+		spec := fmt.Sprintf("path=%s,device=%s,format=%s", path, device, format)
 		if d.ReadOnly {
 			spec += ",readonly=on"
 		}
