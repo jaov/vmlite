@@ -1,0 +1,13 @@
+{
+  "name": "test-vm",
+  "memory": 2048,
+  "cpus": 2,
+  "disk_size": 20,
+  "os_variant": "debian12",
+  "mounts": [
+    {
+      "source": "./data",
+      "target": "shared_data"
+    }
+  ]
+}
