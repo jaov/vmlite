@@ -21,7 +21,7 @@ func fakeQEMUImg(t *testing.T) (binDir, logPath string) {
 }
 
 func TestOverlayPathDefault(t *testing.T) {
-	cfg := &Config{Name: "demo", Image: "/tmp/images/base.qcow2"}
+	cfg := &Config{Name: "demo", Source: Source{Type: sourceCloudImage, Path: "/tmp/images/base.qcow2"}}
 
 	got, err := cfg.overlayPath()
 	if err != nil {
@@ -34,7 +34,11 @@ func TestOverlayPathDefault(t *testing.T) {
 }
 
 func TestOverlayPathExplicit(t *testing.T) {
-	cfg := &Config{Name: "demo", Image: "/tmp/base.qcow2", DiskPath: "/var/tmp/demo.qcow2"}
+	cfg := &Config{
+		Name:   "demo",
+		Source: Source{Type: sourceCloudImage, Path: "/tmp/base.qcow2"},
+		Disk:   Disk{Path: "/var/tmp/demo.qcow2"},
+	}
 
 	got, err := cfg.overlayPath()
 	if err != nil {
@@ -46,7 +50,7 @@ func TestOverlayPathExplicit(t *testing.T) {
 }
 
 func TestSeedPath(t *testing.T) {
-	cfg := &Config{Name: "demo", Image: "/tmp/images/base.qcow2"}
+	cfg := &Config{Name: "demo", Source: Source{Type: sourceCloudImage, Path: "/tmp/images/base.qcow2"}}
 
 	got, err := cfg.seedPath()
 	if err != nil {
@@ -55,6 +59,130 @@ func TestSeedPath(t *testing.T) {
 	want := "/tmp/images/demo-seed.iso"
 	if got != want {
 		t.Fatalf("seedPath = %q, want %q", got, want)
+	}
+}
+
+func TestPrepareOverlay(t *testing.T) {
+	binDir, logPath := fakeQEMUImg(t)
+	t.Setenv("PATH", binDir)
+
+	base := filepath.Join(t.TempDir(), "base.qcow2")
+	if err := os.WriteFile(base, []byte("base"), 0o644); err != nil {
+		t.Fatalf("write base image: %v", err)
+	}
+	overlay := filepath.Join(t.TempDir(), "overlay.qcow2")
+
+	cfg := &Config{
+		Name:   "demo",
+		Source: Source{Type: sourceCloudImage, Path: base},
+		Disk:   Disk{Size: 10, Path: overlay, Format: diskFormatQCOW2},
+	}
+	got, err := prepareOverlay(cfg)
+	if err != nil {
+		t.Fatalf("prepareOverlay: %v", err)
+	}
+	if got != overlay {
+		t.Fatalf("overlay = %q, want %q", got, overlay)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read qemu-img log: %v", err)
+	}
+	want := []string{"create", "-f", "qcow2", "-F", "qcow2", "-b", base, overlay, "10G"}
+	if got := strings.Split(strings.TrimSpace(string(data)), "\n"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("qemu-img args = %q, want %q", got, want)
+	}
+}
+
+func TestPrepareOverlayRawBase(t *testing.T) {
+	binDir, logPath := fakeQEMUImg(t)
+	t.Setenv("PATH", binDir)
+
+	base := filepath.Join(t.TempDir(), "base.raw")
+	if err := os.WriteFile(base, []byte("base"), 0o644); err != nil {
+		t.Fatalf("write base image: %v", err)
+	}
+	overlay := filepath.Join(t.TempDir(), "overlay.qcow2")
+
+	cfg := &Config{
+		Name:   "demo",
+		Source: Source{Type: sourceCloudImage, Path: base},
+		Disk:   Disk{Size: 10, Path: overlay, Format: diskFormatRaw},
+	}
+	if _, err := prepareOverlay(cfg); err != nil {
+		t.Fatalf("prepareOverlay: %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read qemu-img log: %v", err)
+	}
+	args := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if !containsAll(args, "-F", diskFormatRaw) {
+		t.Fatalf("qemu-img args = %q, want -F raw", args)
+	}
+}
+
+func TestPrepareOverlayRefusesExistingDefault(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.qcow2")
+	if err := os.WriteFile(base, []byte("base"), 0o644); err != nil {
+		t.Fatalf("write base image: %v", err)
+	}
+	overlay := filepath.Join(dir, "demo-overlay.qcow2")
+	if err := os.WriteFile(overlay, []byte("existing"), 0o644); err != nil {
+		t.Fatalf("write overlay: %v", err)
+	}
+
+	cfg := &Config{Name: "demo", Source: Source{Type: sourceCloudImage, Path: base}, Disk: Disk{Size: 10}}
+	_, err := prepareOverlay(cfg)
+	if err == nil {
+		t.Fatal("prepareOverlay succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("error = %q, want already exists", err)
+	}
+}
+
+func TestPrepareOverlayReusesExplicitDiskPath(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.qcow2")
+	if err := os.WriteFile(base, []byte("base"), 0o644); err != nil {
+		t.Fatalf("write base image: %v", err)
+	}
+	overlay := filepath.Join(dir, "existing-overlay.qcow2")
+	if err := os.WriteFile(overlay, []byte("existing"), 0o644); err != nil {
+		t.Fatalf("write overlay: %v", err)
+	}
+
+	cfg := &Config{
+		Name:   "demo",
+		Source: Source{Type: sourceCloudImage, Path: base},
+		Disk:   Disk{Size: 10, Path: overlay},
+	}
+	got, err := prepareOverlay(cfg)
+	if err != nil {
+		t.Fatalf("prepareOverlay: %v", err)
+	}
+	if got != overlay {
+		t.Fatalf("overlay = %q, want %q", got, overlay)
+	}
+}
+
+func TestPrepareOverlayMissingImage(t *testing.T) {
+	cfg := &Config{
+		Name:   "demo",
+		Source: Source{Type: sourceCloudImage, Path: filepath.Join(t.TempDir(), "missing.qcow2")},
+		Disk:   Disk{Size: 10, Path: filepath.Join(t.TempDir(), "overlay.qcow2")},
+	}
+
+	_, err := prepareOverlay(cfg)
+	if err == nil {
+		t.Fatal("prepareOverlay succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "not accessible") {
+		t.Fatalf("error = %q, want not accessible", err)
 	}
 }
 
@@ -92,10 +220,9 @@ exit 0
 	}
 
 	cfg := &Config{
-		Name:      "demo",
-		Image:     filepath.Join(dir, "base.qcow2"),
-		DiskPath:  filepath.Join(dir, "overlay.qcow2"),
-		CloudInit: userData,
+		Name:   "demo",
+		Source: Source{Type: sourceCloudImage, Path: filepath.Join(dir, "base.qcow2"), CloudInit: userData},
+		Disk:   Disk{Path: filepath.Join(dir, "overlay.qcow2")},
 	}
 	seed, err := prepareSeed(cfg)
 	if err != nil {
@@ -148,10 +275,9 @@ func TestPrepareSeedReusesExisting(t *testing.T) {
 	t.Setenv("PATH", t.TempDir()) // no ISO tool available
 
 	cfg := &Config{
-		Name:      "demo",
-		Image:     filepath.Join(dir, "base.qcow2"),
-		DiskPath:  filepath.Join(dir, "overlay.qcow2"),
-		CloudInit: filepath.Join(dir, "missing-user-data"),
+		Name:   "demo",
+		Source: Source{Type: sourceCloudImage, Path: filepath.Join(dir, "base.qcow2"), CloudInit: filepath.Join(dir, "missing-user-data")},
+		Disk:   Disk{Path: filepath.Join(dir, "overlay.qcow2")},
 	}
 	got, err := prepareSeed(cfg)
 	if err != nil {
@@ -165,10 +291,9 @@ func TestPrepareSeedReusesExisting(t *testing.T) {
 func TestPrepareSeedMissingUserData(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &Config{
-		Name:      "demo",
-		Image:     filepath.Join(dir, "base.qcow2"),
-		DiskPath:  filepath.Join(dir, "overlay.qcow2"),
-		CloudInit: filepath.Join(dir, "missing-user-data"),
+		Name:   "demo",
+		Source: Source{Type: sourceCloudImage, Path: filepath.Join(dir, "base.qcow2"), CloudInit: filepath.Join(dir, "missing-user-data")},
+		Disk:   Disk{Path: filepath.Join(dir, "overlay.qcow2")},
 	}
 
 	_, err := prepareSeed(cfg)
@@ -180,91 +305,49 @@ func TestPrepareSeedMissingUserData(t *testing.T) {
 	}
 }
 
-func TestPrepareOverlay(t *testing.T) {
-	binDir, logPath := fakeQEMUImg(t)
-	t.Setenv("PATH", binDir)
-
-	base := filepath.Join(t.TempDir(), "base.qcow2")
-	if err := os.WriteFile(base, []byte("base"), 0o644); err != nil {
-		t.Fatalf("write base image: %v", err)
+func TestSourceDiskFormat(t *testing.T) {
+	tests := []struct {
+		format  string
+		want    string
+		wantErr bool
+	}{
+		{"", diskFormatQCOW2, false},
+		{diskFormatQCOW2, diskFormatQCOW2, false},
+		{diskFormatRaw, diskFormatRaw, false},
+		{diskFormatAuto, "", true},
 	}
-	overlay := filepath.Join(t.TempDir(), "overlay.qcow2")
-
-	cfg := &Config{Name: "demo", Image: base, DiskPath: overlay, DiskSize: 10}
-	got, err := prepareOverlay(cfg)
-	if err != nil {
-		t.Fatalf("prepareOverlay: %v", err)
-	}
-	if got != overlay {
-		t.Fatalf("overlay = %q, want %q", got, overlay)
-	}
-
-	data, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatalf("read qemu-img log: %v", err)
-	}
-	want := []string{"create", "-f", "qcow2", "-F", "qcow2", "-b", base, overlay, "10G"}
-	if got := strings.Split(strings.TrimSpace(string(data)), "\n"); !reflect.DeepEqual(got, want) {
-		t.Fatalf("qemu-img args = %q, want %q", got, want)
-	}
-}
-
-func TestPrepareOverlayRefusesExistingDefault(t *testing.T) {
-	dir := t.TempDir()
-	base := filepath.Join(dir, "base.qcow2")
-	if err := os.WriteFile(base, []byte("base"), 0o644); err != nil {
-		t.Fatalf("write base image: %v", err)
-	}
-	overlay := filepath.Join(dir, "demo-overlay.qcow2")
-	if err := os.WriteFile(overlay, []byte("existing"), 0o644); err != nil {
-		t.Fatalf("write overlay: %v", err)
-	}
-
-	cfg := &Config{Name: "demo", Image: base, DiskSize: 10}
-	_, err := prepareOverlay(cfg)
-	if err == nil {
-		t.Fatal("prepareOverlay succeeded, want error")
-	}
-	if !strings.Contains(err.Error(), "already exists") {
-		t.Fatalf("error = %q, want already exists", err)
+	for _, tc := range tests {
+		cfg := &Config{Disk: Disk{Format: tc.format}}
+		got, err := cfg.sourceDiskFormat()
+		if tc.wantErr {
+			if err == nil {
+				t.Fatalf("format %q: expected error", tc.format)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("format %q: %v", tc.format, err)
+		}
+		if got != tc.want {
+			t.Fatalf("format %q: got %q, want %q", tc.format, got, tc.want)
+		}
 	}
 }
 
-func TestPrepareOverlayReusesExplicitDiskPath(t *testing.T) {
-	dir := t.TempDir()
-	base := filepath.Join(dir, "base.qcow2")
-	if err := os.WriteFile(base, []byte("base"), 0o644); err != nil {
-		t.Fatalf("write base image: %v", err)
+func TestExtraDiskFormat(t *testing.T) {
+	tests := []struct {
+		format string
+		want   string
+	}{
+		{"", diskFormatRaw},
+		{diskFormatAuto, diskFormatRaw},
+		{diskFormatRaw, diskFormatRaw},
+		{diskFormatQCOW2, diskFormatQCOW2},
 	}
-	overlay := filepath.Join(dir, "existing-overlay.qcow2")
-	if err := os.WriteFile(overlay, []byte("existing"), 0o644); err != nil {
-		t.Fatalf("write overlay: %v", err)
-	}
-
-	cfg := &Config{Name: "demo", Image: base, DiskPath: overlay, DiskSize: 10}
-	got, err := prepareOverlay(cfg)
-	if err != nil {
-		t.Fatalf("prepareOverlay: %v", err)
-	}
-	if got != overlay {
-		t.Fatalf("overlay = %q, want %q", got, overlay)
-	}
-}
-
-func TestPrepareOverlayMissingImage(t *testing.T) {
-	cfg := &Config{
-		Name:     "demo",
-		Image:    filepath.Join(t.TempDir(), "missing.qcow2"),
-		DiskPath: filepath.Join(t.TempDir(), "overlay.qcow2"),
-		DiskSize: 10,
-	}
-
-	_, err := prepareOverlay(cfg)
-	if err == nil {
-		t.Fatal("prepareOverlay succeeded, want error")
-	}
-	if !strings.Contains(err.Error(), "not accessible") {
-		t.Fatalf("error = %q, want not accessible", err)
+	for _, tc := range tests {
+		if got := extraDiskFormat(ExtraDisk{Format: tc.format}); got != tc.want {
+			t.Fatalf("format %q: got %q, want %q", tc.format, got, tc.want)
+		}
 	}
 }
 
@@ -276,9 +359,9 @@ func TestCheckImageTools(t *testing.T) {
 		}
 	}
 
-	t.Run("image requires qemu-img", func(t *testing.T) {
+	t.Run("cloud image requires qemu-img", func(t *testing.T) {
 		t.Setenv("PATH", t.TempDir())
-		cfg := &Config{Image: "/tmp/base.qcow2"}
+		cfg := &Config{Source: Source{Type: sourceCloudImage, Path: "/tmp/base.qcow2"}}
 		err := CheckImageTools(cfg)
 		if err == nil || !strings.Contains(err.Error(), "qemu-img") {
 			t.Fatalf("err = %v, want qemu-img error", err)
@@ -289,7 +372,7 @@ func TestCheckImageTools(t *testing.T) {
 		dir := t.TempDir()
 		writeTool(t, dir, "qemu-img")
 		t.Setenv("PATH", dir)
-		cfg := &Config{Image: "/tmp/base.qcow2", CloudInit: "/tmp/user-data"}
+		cfg := &Config{Source: Source{Type: sourceCloudImage, Path: "/tmp/base.qcow2", CloudInit: "/tmp/user-data"}}
 		err := CheckImageTools(cfg)
 		if err == nil || !strings.Contains(err.Error(), "cloud_init requires") {
 			t.Fatalf("err = %v, want cloud_init error", err)
@@ -301,15 +384,22 @@ func TestCheckImageTools(t *testing.T) {
 		writeTool(t, dir, "qemu-img")
 		writeTool(t, dir, "genisoimage")
 		t.Setenv("PATH", dir)
-		cfg := &Config{Image: "/tmp/base.qcow2", CloudInit: "/tmp/user-data"}
+		cfg := &Config{Source: Source{Type: sourceCloudImage, Path: "/tmp/base.qcow2", CloudInit: "/tmp/user-data"}}
 		if err := CheckImageTools(cfg); err != nil {
 			t.Fatalf("CheckImageTools: %v", err)
 		}
 	})
 
-	t.Run("no image needs no tools", func(t *testing.T) {
+	t.Run("none needs no tools", func(t *testing.T) {
 		t.Setenv("PATH", t.TempDir())
-		if err := CheckImageTools(&Config{}); err != nil {
+		if err := CheckImageTools(&Config{Source: Source{Type: sourceNone}}); err != nil {
+			t.Fatalf("CheckImageTools: %v", err)
+		}
+	})
+
+	t.Run("install tree needs no tools", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		if err := CheckImageTools(&Config{Source: Source{Type: sourceInstallTree, URL: "https://example.invalid"}}); err != nil {
 			t.Fatalf("CheckImageTools: %v", err)
 		}
 	})

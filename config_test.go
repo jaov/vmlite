@@ -21,10 +21,27 @@ func TestLoadConfigValid(t *testing.T) {
 		"name": "test-vm",
 		"memory": 2048,
 		"cpus": 2,
-		"disk_size": 20,
 		"os_variant": "debian12",
-		"install_url": "https://example.invalid/debian/",
-		"mounts": [{"source": "/tmp/data", "target": "shared_data"}]
+		"firmware": "uefi",
+		"source": {
+			"type": "cloud_image",
+			"path": "/tmp/base.qcow2",
+			"cloud_init": "/tmp/user-data"
+		},
+		"disk": {
+			"size": 20,
+			"path": "/tmp/overlay.qcow2",
+			"format": "qcow2"
+		},
+		"mounts": [
+			{"source": "/tmp/data", "target": "shared_data", "type": "9p"}
+		],
+		"network": {"mode": "bridge", "bridge": "br0", "model": "virtio"},
+		"graphics": {"type": "vnc", "listen": "127.0.0.1"},
+		"autoconsole": true,
+		"extra_disks": [
+			{"path": "/tmp/config.iso", "device": "cdrom", "format": "raw", "readonly": true}
+		]
 	}`)
 
 	cfg, err := LoadConfig(path)
@@ -32,112 +49,71 @@ func TestLoadConfigValid(t *testing.T) {
 		t.Fatalf("LoadConfig: %v", err)
 	}
 
-	if cfg.Name != "test-vm" {
-		t.Errorf("Name = %q, want %q", cfg.Name, "test-vm")
+	if cfg.Name != "test-vm" || cfg.Memory != 2048 || cfg.CPUs != 2 {
+		t.Errorf("basic fields = %+v", cfg)
 	}
-	if cfg.Memory != 2048 {
-		t.Errorf("Memory = %d, want 2048", cfg.Memory)
+	if cfg.OSVariant != "debian12" || cfg.Firmware != "uefi" {
+		t.Errorf("os/firmware = %q/%q", cfg.OSVariant, cfg.Firmware)
 	}
-	if cfg.CPUs != 2 {
-		t.Errorf("CPUs = %d, want 2", cfg.CPUs)
+	if cfg.Source.Type != sourceCloudImage || cfg.Source.Path != "/tmp/base.qcow2" || cfg.Source.CloudInit != "/tmp/user-data" {
+		t.Errorf("source = %+v", cfg.Source)
 	}
-	if cfg.DiskSize != 20 {
-		t.Errorf("DiskSize = %d, want 20", cfg.DiskSize)
+	if cfg.Disk.Size != 20 || cfg.Disk.Path != "/tmp/overlay.qcow2" || cfg.Disk.Format != "qcow2" {
+		t.Errorf("disk = %+v", cfg.Disk)
 	}
-	if cfg.OSVariant != "debian12" {
-		t.Errorf("OSVariant = %q, want %q", cfg.OSVariant, "debian12")
+	if len(cfg.Mounts) != 1 || cfg.Mounts[0].Type != "9p" {
+		t.Errorf("mounts = %+v", cfg.Mounts)
 	}
-	if cfg.InstallURL != "https://example.invalid/debian/" {
-		t.Errorf("InstallURL = %q", cfg.InstallURL)
+	if cfg.Network.Mode != "bridge" || cfg.Network.Bridge != "br0" || cfg.Network.Model != "virtio" {
+		t.Errorf("network = %+v", cfg.Network)
 	}
-	if len(cfg.Mounts) != 1 || cfg.Mounts[0].Source != "/tmp/data" || cfg.Mounts[0].Target != "shared_data" {
-		t.Errorf("Mounts = %+v", cfg.Mounts)
+	if cfg.Graphics.Type != "vnc" || cfg.Graphics.Listen != "127.0.0.1" {
+		t.Errorf("graphics = %+v", cfg.Graphics)
 	}
-}
-
-func TestLoadConfigImageFields(t *testing.T) {
-	path := writeConfigFile(t, `{
-		"name": "image-vm",
-		"memory": 2048,
-		"cpus": 2,
-		"disk_size": 10,
-		"os_variant": "ubuntu24.04",
-		"image": "/tmp/ubuntu.qcow2",
-		"disk_path": "/tmp/image-vm.qcow2",
-		"cloud_init": "/tmp/user-data"
-	}`)
-
-	cfg, err := LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
+	if !cfg.Autoconsole {
+		t.Error("Autoconsole = false, want true")
 	}
-	if cfg.Image != "/tmp/ubuntu.qcow2" {
-		t.Errorf("Image = %q", cfg.Image)
-	}
-	if cfg.DiskPath != "/tmp/image-vm.qcow2" {
-		t.Errorf("DiskPath = %q", cfg.DiskPath)
-	}
-	if cfg.CloudInit != "/tmp/user-data" {
-		t.Errorf("CloudInit = %q", cfg.CloudInit)
+	if len(cfg.ExtraDisks) != 1 || !cfg.ExtraDisks[0].ReadOnly {
+		t.Errorf("extra disks = %+v", cfg.ExtraDisks)
 	}
 }
 
 func TestLoadConfigValidation(t *testing.T) {
+	base := func(overrides string) string {
+		return `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "none"}, "disk": {"size": 5}` + overrides + `}`
+	}
+
 	tests := []struct {
 		name    string
 		content string
 		wantErr string
 	}{
-		{
-			name:    "missing name",
-			content: `{"memory": 1024, "cpus": 1, "disk_size": 5, "os_variant": "debian12"}`,
-			wantErr: "name is required",
-		},
-		{
-			name:    "zero memory",
-			content: `{"name": "vm", "memory": 0, "cpus": 1, "disk_size": 5, "os_variant": "debian12"}`,
-			wantErr: "memory must be greater than zero",
-		},
-		{
-			name:    "negative cpus",
-			content: `{"name": "vm", "memory": 1024, "cpus": -1, "disk_size": 5, "os_variant": "debian12"}`,
-			wantErr: "cpus must be greater than zero",
-		},
-		{
-			name:    "zero disk",
-			content: `{"name": "vm", "memory": 1024, "cpus": 1, "disk_size": 0, "os_variant": "debian12"}`,
-			wantErr: "disk_size must be greater than zero",
-		},
-		{
-			name:    "missing os variant",
-			content: `{"name": "vm", "memory": 1024, "cpus": 1, "disk_size": 5}`,
-			wantErr: "os_variant is required",
-		},
-		{
-			name:    "mount missing source",
-			content: `{"name": "vm", "memory": 1024, "cpus": 1, "disk_size": 5, "os_variant": "debian12", "mounts": [{"target": "data"}]}`,
-			wantErr: "mounts[0].source is required",
-		},
-		{
-			name:    "mount missing target",
-			content: `{"name": "vm", "memory": 1024, "cpus": 1, "disk_size": 5, "os_variant": "debian12", "mounts": [{"source": "/tmp/data"}]}`,
-			wantErr: "mounts[0].target is required",
-		},
-		{
-			name:    "image and install url",
-			content: `{"name": "vm", "memory": 1024, "cpus": 1, "disk_size": 5, "os_variant": "debian12", "image": "/tmp/base.qcow2", "install_url": "https://example.invalid/"}`,
-			wantErr: "mutually exclusive",
-		},
-		{
-			name:    "cloud init without image",
-			content: `{"name": "vm", "memory": 1024, "cpus": 1, "disk_size": 5, "os_variant": "debian12", "cloud_init": "/tmp/user-data"}`,
-			wantErr: "cloud_init requires image",
-		},
-		{
-			name:    "disk path without image",
-			content: `{"name": "vm", "memory": 1024, "cpus": 1, "disk_size": 5, "os_variant": "debian12", "disk_path": "/tmp/overlay.qcow2"}`,
-			wantErr: "disk_path requires image",
-		},
+		{"missing name", `{"memory": 1024, "cpus": 1, "source": {"type": "none"}, "disk": {"size": 5}}`, "name is required"},
+		{"zero memory", `{"name": "vm", "memory": 0, "cpus": 1, "source": {"type": "none"}, "disk": {"size": 5}}`, "memory must be greater than zero"},
+		{"negative cpus", `{"name": "vm", "memory": 1024, "cpus": -1, "source": {"type": "none"}, "disk": {"size": 5}}`, "cpus must be greater than zero"},
+		{"missing source", `{"name": "vm", "memory": 1024, "cpus": 1, "disk": {"size": 5}}`, "source.type must be"},
+		{"invalid source", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "bogus"}, "disk": {"size": 5}}`, "source.type must be"},
+		{"none with path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "none", "path": "/tmp/x"}, "disk": {"size": 5}}`, "does not accept path"},
+		{"cloud image no path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image"}, "disk": {"size": 5}}`, "source.path is required"},
+		{"cloud image url", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x", "url": "https://example.invalid"}, "disk": {"size": 5}}`, "not valid"},
+		{"cloud image no disk size", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 0}}`, "disk.size"},
+		{"install tree no url", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "install_tree"}, "disk": {"size": 5}}`, "source.url is required"},
+		{"install tree cloud init", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "install_tree", "url": "https://example.invalid", "cloud_init": "/tmp/u"}, "disk": {"size": 5}}`, "not valid"},
+		{"iso no path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso"}, "disk": {"size": 5}}`, "source.path is required"},
+		{"disk no path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "disk"}, "disk": {"size": 5}}`, "source.path is required"},
+		{"disk with disk path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "disk", "path": "/tmp/x"}, "disk": {"size": 5, "path": "/tmp/y"}}`, "disk.path is not used"},
+		{"pxe with path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "pxe", "path": "/tmp/x"}, "disk": {"size": 5}}`, "does not accept path"},
+		{"bad firmware", base(`, "firmware": "coreboot"`), "firmware must be"},
+		{"bad disk format", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "none"}, "disk": {"size": 5, "format": "vmdk"}}`, "disk.format must be"},
+		{"mount missing source", base(`, "mounts": [{"target": "data"}]`), "mounts[0].source is required"},
+		{"mount missing target", base(`, "mounts": [{"source": "/tmp/data"}]`), "mounts[0].target is required"},
+		{"bad mount type", base(`, "mounts": [{"source": "/tmp/data", "target": "data", "type": "nfs"}]`), "mounts[0].type must be"},
+		{"bridge without name", base(`, "network": {"mode": "bridge"}`), "network.bridge is required"},
+		{"bad network mode", base(`, "network": {"mode": "vlan"}`), "network.mode must be"},
+		{"bad graphics type", base(`, "graphics": {"type": "sdl"}`), "graphics.type must be"},
+		{"extra disk no path", base(`, "extra_disks": [{}]`), "extra_disks[0].path is required"},
+		{"bad extra disk device", base(`, "extra_disks": [{"path": "/tmp/x", "device": "floppy"}]`), "extra_disks[0].device must be"},
+		{"bad extra disk format", base(`, "extra_disks": [{"path": "/tmp/x", "format": "vmdk"}]`), "extra_disks[0].format must be"},
 	}
 
 	for _, tc := range tests {
@@ -154,6 +130,19 @@ func TestLoadConfigValidation(t *testing.T) {
 	}
 }
 
+func TestSampleConfig(t *testing.T) {
+	cfg, err := LoadConfig("vm.json")
+	if err != nil {
+		t.Fatalf("LoadConfig(vm.json): %v", err)
+	}
+	if cfg.Source.Type != sourceNone {
+		t.Fatalf("sample source.type = %q, want %q", cfg.Source.Type, sourceNone)
+	}
+	if cfg.Disk.Size <= 0 {
+		t.Fatalf("sample disk.size = %d", cfg.Disk.Size)
+	}
+}
+
 func TestLoadConfigInvalidJSON(t *testing.T) {
 	path := writeConfigFile(t, `{not json`)
 	_, err := LoadConfig(path)
@@ -162,6 +151,17 @@ func TestLoadConfigInvalidJSON(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "parse config") {
 		t.Fatalf("error = %q, want parse context", err)
+	}
+}
+
+func TestLoadConfigTrailingData(t *testing.T) {
+	path := writeConfigFile(t, `{"name":"vm","memory":1024,"cpus":1,"source":{"type":"none"},"disk":{"size":5}} {"extra":true}`)
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("LoadConfig succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "trailing data") {
+		t.Fatalf("error = %q, want trailing data", err)
 	}
 }
 

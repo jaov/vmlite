@@ -227,12 +227,17 @@ package_update: false
 		Name:      name,
 		Memory:    2048,
 		CPUs:      2,
-		DiskSize:  10,
 		OSVariant: variant,
-		Image:     stagedImage,
-		DiskPath:  overlay,
-		CloudInit: userData,
-		Mounts:    []Mount{{Source: sharedDir, Target: "shared_data"}},
+		Firmware:  firmwareBIOS,
+		Source: Source{
+			Type:      sourceCloudImage,
+			Path:      stagedImage,
+			CloudInit: userData,
+		},
+		Disk:     Disk{Size: 10, Path: overlay, Format: diskFormatQCOW2},
+		Network:  Network{Mode: networkModeAuto},
+		Graphics: Graphics{Type: graphicsNone},
+		Mounts:   []Mount{{Source: sharedDir, Target: "shared_data", Type: mountType9P}},
 	}
 	configPath := writeConfig(t, cfg)
 

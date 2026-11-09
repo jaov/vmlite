@@ -127,6 +127,20 @@ func virsh(t *testing.T, uri string, args ...string) (string, error) {
 	return string(out), err
 }
 
+func noInstallConfig(name string, mounts []Mount) Config {
+	return Config{
+		Name:      name,
+		Memory:    256,
+		CPUs:      1,
+		OSVariant: "debian12",
+		Source:    Source{Type: sourceNone},
+		Disk:      Disk{Size: 1},
+		Network:   Network{Mode: networkModeAuto},
+		Graphics:  Graphics{Type: graphicsNone},
+		Mounts:    mounts,
+	}
+}
+
 func writeConfig(t *testing.T, cfg Config) string {
 	t.Helper()
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -239,14 +253,7 @@ func createVM(t *testing.T, uri string, mounts []Mount) string {
 	name := uniqueName()
 	registerCleanup(t, uri, name)
 
-	cfg := Config{
-		Name:      name,
-		Memory:    256,
-		CPUs:      1,
-		DiskSize:  1,
-		OSVariant: "debian12",
-		Mounts:    mounts,
-	}
+	cfg := noInstallConfig(name, mounts)
 	path := writeConfig(t, cfg)
 
 	out, err := runVmlite(t, uri, path)
@@ -347,13 +354,7 @@ func TestDuplicateName(t *testing.T) {
 
 	name := uniqueName()
 	registerCleanup(t, testURI, name)
-	cfg := Config{
-		Name:      name,
-		Memory:    256,
-		CPUs:      1,
-		DiskSize:  1,
-		OSVariant: "debian12",
-	}
+	cfg := noInstallConfig(name, nil)
 	path := writeConfig(t, cfg)
 
 	if out, err := runVmlite(t, testURI, path); err != nil {
@@ -372,14 +373,7 @@ func TestMissingMountSource(t *testing.T) {
 	requireIntegration(t)
 
 	name := uniqueName()
-	cfg := Config{
-		Name:      name,
-		Memory:    256,
-		CPUs:      1,
-		DiskSize:  1,
-		OSVariant: "debian12",
-		Mounts:    []Mount{{Source: filepath.Join(t.TempDir(), "missing"), Target: "data"}},
-	}
+	cfg := noInstallConfig(name, []Mount{{Source: filepath.Join(t.TempDir(), "missing"), Target: "data"}})
 	path := writeConfig(t, cfg)
 
 	out, err := runVmlite(t, testURI, path)
@@ -402,14 +396,7 @@ func TestConnectionOverrides(t *testing.T) {
 
 	// A missing mount source makes the run fail after the connection has been
 	// selected, so we can assert on the selected URI without creating a VM.
-	cfg := Config{
-		Name:      uniqueName(),
-		Memory:    256,
-		CPUs:      1,
-		DiskSize:  1,
-		OSVariant: "debian12",
-		Mounts:    []Mount{{Source: filepath.Join(t.TempDir(), "missing"), Target: "data"}},
-	}
+	cfg := noInstallConfig(uniqueName(), []Mount{{Source: filepath.Join(t.TempDir(), "missing"), Target: "data"}})
 	path := writeConfig(t, cfg)
 
 	t.Run("environment", func(t *testing.T) {
@@ -470,13 +457,7 @@ func TestNoInstallArgsCapture(t *testing.T) {
 	requireIntegration(t)
 
 	binDir, logPath := fakeVirtInstall(t)
-	cfg := Config{
-		Name:      uniqueName(),
-		Memory:    256,
-		CPUs:      1,
-		DiskSize:  1,
-		OSVariant: "debian12",
-	}
+	cfg := noInstallConfig(uniqueName(), nil)
 	path := writeConfig(t, cfg)
 
 	env := map[string]string{
@@ -503,12 +484,19 @@ func TestInstallURLArgsCapture(t *testing.T) {
 
 	binDir, logPath := fakeVirtInstall(t)
 	cfg := Config{
-		Name:       uniqueName(),
-		Memory:     256,
-		CPUs:       1,
-		DiskSize:   1,
-		OSVariant:  "debian12",
-		InstallURL: "https://example.invalid/debian/",
+		Name:      uniqueName(),
+		Memory:    256,
+		CPUs:      1,
+		OSVariant: "debian12",
+		Source: Source{
+			Type:      sourceInstallTree,
+			URL:       "https://example.invalid/debian/",
+			ExtraArgs: "console=ttyS0,115200n8",
+		},
+		Disk:        Disk{Size: 1},
+		Network:     Network{Mode: networkModeAuto},
+		Graphics:    Graphics{Type: graphicsNone},
+		Autoconsole: true,
 	}
 	path := writeConfig(t, cfg)
 

@@ -2,12 +2,25 @@
   "name": "test-vm",
   "memory": 2048,
   "cpus": 2,
-  "disk_size": 20,
   "os_variant": "debian12",
+  "firmware": "bios",
+  "source": {
+    "type": "none"
+  },
+  "disk": {
+    "size": 20
+  },
   "mounts": [
     {
       "source": "./data",
-      "target": "shared_data"
+      "target": "shared_data",
+      "type": "9p"
     }
-  ]
+  ],
+  "network": {
+    "mode": "auto"
+  },
+  "graphics": {
+    "type": "none"
+  }
 }

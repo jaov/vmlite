@@ -124,38 +124,70 @@ Session-mode SSH was attempted with passt and a `portForward` for
 port forwarding, and slirp rejects `portForward` outright. The boot test
 therefore uses system mode with the default NAT network and DHCP.
 
-## Image-based VMs
+## VM configuration (v2)
 
-Image mode lets vmlite boot an existing qcow2 cloud image:
+Image-based VM example:
 
 ```json
 {
   "name": "dev-vm",
   "memory": 2048,
   "cpus": 2,
-  "disk_size": 10,
   "os_variant": "ubuntu24.04",
-  "image": "/var/cache/vmlite/ubuntu-24.04-minimal-cloudimg-amd64.img",
-  "disk_path": "/var/tmp/dev-vm-overlay.qcow2",
-  "cloud_init": "/var/tmp/dev-vm-user-data",
+  "firmware": "bios",
+  "source": {
+    "type": "cloud_image",
+    "path": "/var/cache/vmlite/ubuntu-24.04-minimal-cloudimg-amd64.img",
+    "cloud_init": "/var/tmp/dev-vm-user-data"
+  },
+  "disk": {
+    "size": 10,
+    "path": "/var/tmp/dev-vm-overlay.qcow2",
+    "format": "qcow2"
+  },
   "mounts": [
-    { "source": "/var/tmp/shared", "target": "shared_data" }
-  ]
+    { "source": "/var/tmp/shared", "target": "shared_data", "type": "9p" }
+  ],
+  "network": { "mode": "auto" },
+  "graphics": { "type": "none" }
 }
 ```
 
-- `image` and `install_url` are mutually exclusive.
-- `disk_size` is the overlay's virtual size in GiB. Create it larger than the
-  base image so cloud-init's growpart can expand the root filesystem.
-- `disk_path` defaults to `<image-dir>/<name>-overlay.qcow2`. An implicit
-  default path that already exists is an error; an explicitly configured
-  `disk_path` is reused as a user-managed disk.
-- `cloud_init` is a cloud-init user-data file. vmlite generates a persistent
-  NoCloud seed ISO next to the overlay (`<name>-seed.iso`) and adds the SMBIOS
-  `ds=nocloud` hint.
-- vmlite starts the guest with `--noautoconsole` and sets
-  `on_reboot=restart`/`on_crash=restart`, so a guest reboot does not destroy the
-  domain.
+`source.type` selects how the guest boots:
+
+| Type | Meaning |
+|---|---|
+| `none` | Empty disk, no installation; define and start the VM |
+| `cloud_image` | qcow2/raw base image with an overlay; optional cloud-init seed |
+| `install_tree` | Linux install tree URL; optional `extra_args` |
+| `iso` | Installer ISO; pair with `graphics: "vnc"` or a serial console |
+| `disk` | Import an existing installed disk |
+| `pxe` | Network boot |
+
+Other fields:
+
+- `firmware`: `bios` (default) or `uefi`.
+- `disk.size` is GiB. `disk.path` is optional. `disk.format` accepts `qcow2`
+  or `raw` (set it explicitly for raw images).
+- `mounts[].type`: `9p` (default), `none`, or `virtiofs` (reserved; currently
+  rejected).
+- `network.mode`: `auto`, `default`, `user`, or `bridge` (with `network.bridge`).
+- `graphics.type`: `none` (default), `vnc`, or `spice`; `graphics.listen`
+  defaults to `127.0.0.1`.
+- `autoconsole` defaults to false. Set it to true when you want virt-install to
+  attach to the guest console and block.
+- `extra_disks` attaches additional media, for example installer config discs.
+
+Cloud-image behavior:
+
+- `disk.size` is the overlay's virtual size. Create it larger than the base
+  image so cloud-init's growpart can expand the root filesystem.
+- An explicit `disk.path` is reused as a user-managed disk. An implicit default
+  path (`<image-dir>/<name>-overlay.qcow2`) that already exists is an error.
+- `source.cloud_init` is a user-data file. vmlite generates a persistent
+  NoCloud seed ISO next to the overlay and adds the SMBIOS `ds=nocloud` hint.
+- vmlite sets `on_reboot=restart`/`on_crash=restart` so a guest reboot does not
+  destroy the domain.
 
 In system mode, the base image must be readable and the overlay writable by the
 qemu user (`libvirt-qemu`). Session mode avoids those permissions issues; use
