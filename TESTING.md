@@ -64,12 +64,29 @@ This downloads the Ubuntu 24.04 minimal cloud image (~250 MiB) to
 ./scripts/fetch-cloud-image.sh /var/tmp/ubuntu-24.04.qcow2
 ```
 
-Debian 12 genericcloud was retested with the final seed and SMBIOS hint. Its
-cloud-init still did not install the SSH key, and offline inspection of the
-image showed its cloud kernel has `# CONFIG_NET_9P is not set`. The 9p mount
-therefore cannot work in a Debian cloud guest at all. Ubuntu minimal is the
-tested image; Debian image mode would need a kernel with 9p support (or a
-virtiofs-based mount implementation).
+Tested images:
+
+| Distro | Image | Boot test |
+|---|---|---|
+| Ubuntu 24.04 | `ubuntu-24.04-minimal-cloudimg-amd64.img` | SSH + 9p |
+| Debian 12 | `debian-12-generic-amd64.qcow2` | SSH + 9p |
+
+Debian has two image flavours. Use **generic**, not genericcloud:
+
+```bash
+curl -fL -o ~/.cache/vmlite/debian-12-generic-amd64.qcow2 \
+  https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2
+
+VMLITE_TEST_IMAGE="$HOME/.cache/vmlite/debian-12-generic-amd64.qcow2" \
+VMLITE_TEST_OS_VARIANT=debian12 \
+VMLITE_TEST_SSH_USER=debian \
+  go test -tags integration -run TestBootableGuest -v ./...
+```
+
+The `genericcloud` image uses Debian's cloud kernel, which has
+`# CONFIG_NET_9P is not set`; 9p mounts cannot work there. The **generic** image
+uses the standard kernel, includes cloud-init, and passes the full SSH + 9p
+boot test.
 
 ### Run the boot test
 
