@@ -40,18 +40,52 @@ const (
 
 // Config describes the virtual machine that vmlite creates.
 type Config struct {
-	Name        string      `json:"name"`
-	Memory      int         `json:"memory"` // in MiB
-	CPUs        int         `json:"cpus"`
-	OSVariant   string      `json:"os_variant,omitempty"`
-	Firmware    string      `json:"firmware,omitempty"`
-	Source      Source      `json:"source"`
-	Disk        Disk        `json:"disk"`
-	Mounts      []Mount     `json:"mounts,omitempty"`
-	Network     Network     `json:"network,omitempty"`
-	Graphics    Graphics    `json:"graphics,omitempty"`
-	Autoconsole bool        `json:"autoconsole,omitempty"`
-	ExtraDisks  []ExtraDisk `json:"extra_disks,omitempty"`
+	Name         string        `json:"name"`
+	Memory       int           `json:"memory"` // in MiB
+	CPUs         int           `json:"cpus"`
+	OSVariant    string        `json:"os_variant,omitempty"`
+	Firmware     string        `json:"firmware,omitempty"`
+	Source       Source        `json:"source"`
+	Disk         Disk          `json:"disk"`
+	Mounts       []Mount       `json:"mounts,omitempty"`
+	Network      Network       `json:"network,omitempty"`
+	Graphics     Graphics      `json:"graphics,omitempty"`
+	Autoconsole  bool          `json:"autoconsole,omitempty"`
+	ExtraDisks   []ExtraDisk   `json:"extra_disks,omitempty"`
+	SSH          SSHConfig     `json:"ssh,omitempty"`
+	Provisioners []Provisioner `json:"provisioners,omitempty"`
+
+	sshPublicKey    string
+	sshKeyGenerated bool
+}
+
+// SSHConfig controls the guest account used for shell provisioners.
+type SSHConfig struct {
+	User string `json:"user,omitempty"`
+	Key  string `json:"key,omitempty"`
+}
+
+// Provisioner is a post-boot shell action.
+type Provisioner struct {
+	Type   string `json:"type,omitempty"`
+	Path   string `json:"path,omitempty"`
+	Inline string `json:"inline,omitempty"`
+	Run    string `json:"run,omitempty"` // once, always
+}
+
+func (c *Config) sshUser() string {
+	if strings.TrimSpace(c.SSH.User) != "" {
+		return c.SSH.User
+	}
+	return "vmlite"
+}
+
+func (c *Config) needsSSH() bool {
+	return len(c.Provisioners) > 0 || strings.TrimSpace(c.SSH.User) != "" || strings.TrimSpace(c.SSH.Key) != ""
+}
+
+func (c *Config) needsSeed() bool {
+	return strings.TrimSpace(c.Source.CloudInit) != "" || c.needsSSH()
 }
 
 // Source selects what the VM boots from.
@@ -194,6 +228,32 @@ func (c *Config) Validate() error {
 		case "", diskFormatAuto, diskFormatQCOW2, diskFormatRaw:
 		default:
 			return fmt.Errorf("extra_disks[%d].format must be %q, %q, or %q", i, diskFormatAuto, diskFormatQCOW2, diskFormatRaw)
+		}
+	}
+
+	if c.needsSSH() && c.Source.Type != sourceCloudImage {
+		return fmt.Errorf("ssh/provisioners require source.type %q", sourceCloudImage)
+	}
+	if len(c.Provisioners) > 0 {
+		if c.Network.Mode == networkModeUser {
+			return fmt.Errorf("provisioners require a guest-visible network; network.mode %q is not supported", networkModeUser)
+		}
+	}
+	for i, p := range c.Provisioners {
+		switch p.Type {
+		case "", "shell":
+		default:
+			return fmt.Errorf("provisioners[%d].type must be %q", i, "shell")
+		}
+		hasPath := strings.TrimSpace(p.Path) != ""
+		hasInline := p.Inline != ""
+		if hasPath == hasInline {
+			return fmt.Errorf("provisioners[%d] requires exactly one of path or inline", i)
+		}
+		switch p.Run {
+		case "", "once", "always":
+		default:
+			return fmt.Errorf("provisioners[%d].run must be %q or %q", i, "once", "always")
 		}
 	}
 

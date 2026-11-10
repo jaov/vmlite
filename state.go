@@ -13,20 +13,31 @@ import (
 
 // State records the managed VM and the files vmlite created for it.
 type State struct {
-	Version     int    `json:"version"`
-	Name        string `json:"name"`
-	ConfigPath  string `json:"config_path"`
-	ConfigHash  string `json:"config_hash"`
-	LibvirtURI  string `json:"libvirt_uri"`
-	UUID        string `json:"uuid,omitempty"`
-	ImagePath   string `json:"image_path,omitempty"`
-	ImageSHA256 string `json:"image_sha256,omitempty"`
-	DiskPath    string `json:"disk_path,omitempty"`
-	SeedPath    string `json:"seed_path,omitempty"`
-	AssetDir    string `json:"asset_dir,omitempty"`
-	PoolName    string `json:"pool_name,omitempty"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	Version         int               `json:"version"`
+	Name            string            `json:"name"`
+	ConfigPath      string            `json:"config_path"`
+	ConfigHash      string            `json:"config_hash"`
+	LibvirtURI      string            `json:"libvirt_uri"`
+	UUID            string            `json:"uuid,omitempty"`
+	ImagePath       string            `json:"image_path,omitempty"`
+	ImageSHA256     string            `json:"image_sha256,omitempty"`
+	DiskPath        string            `json:"disk_path,omitempty"`
+	SeedPath        string            `json:"seed_path,omitempty"`
+	AssetDir        string            `json:"asset_dir,omitempty"`
+	PoolName        string            `json:"pool_name,omitempty"`
+	SSHKeyPath      string            `json:"ssh_key_path,omitempty"`
+	SSHKeyGenerated bool              `json:"ssh_key_generated,omitempty"`
+	SSHUser         string            `json:"ssh_user,omitempty"`
+	IP              string            `json:"ip,omitempty"`
+	Provisioned     []ProvisionRecord `json:"provisioned,omitempty"`
+	CreatedAt       string            `json:"created_at"`
+	UpdatedAt       string            `json:"updated_at"`
+}
+
+type ProvisionRecord struct {
+	ID          string `json:"id"`
+	SHA256      string `json:"sha256"`
+	CompletedAt string `json:"completed_at"`
 }
 
 type projectLayout struct {
@@ -59,7 +70,12 @@ func newProjectLayout(configPath, stateDirFlag, name string) (projectLayout, err
 }
 
 func hashConfig(cfg *Config) (string, error) {
-	data, err := json.Marshal(cfg)
+	// Provisioning and SSH settings are not VM shape; changing a script must
+	// not require recreating the domain.
+	clone := *cfg
+	clone.SSH = SSHConfig{}
+	clone.Provisioners = nil
+	data, err := json.Marshal(&clone)
 	if err != nil {
 		return "", fmt.Errorf("hash config: %w", err)
 	}
@@ -160,12 +176,21 @@ func newState(cfg *Config, layout projectLayout, uri, configHash, uuid string) (
 			st.PoolName = filepath.Base(layout.AssetDir)
 		}
 	}
-	if strings.TrimSpace(cfg.Source.CloudInit) != "" {
+	if cfg.needsSeed() {
 		seed, err := cfg.seedPath()
 		if err != nil {
 			return nil, err
 		}
 		st.SeedPath = seed
+	}
+	if strings.TrimSpace(cfg.SSH.Key) != "" {
+		key, err := filepath.Abs(cfg.SSH.Key)
+		if err != nil {
+			return nil, fmt.Errorf("resolve ssh key %q: %w", cfg.SSH.Key, err)
+		}
+		st.SSHKeyPath = key
+		st.SSHKeyGenerated = cfg.sshKeyGenerated
+		st.SSHUser = cfg.sshUser()
 	}
 	return st, nil
 }

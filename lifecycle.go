@@ -114,6 +114,9 @@ func runUp(args []string) error {
 	if err != nil {
 		return err
 	}
+	if len(cfg.Provisioners) > 0 && uri == sessionURI {
+		return fmt.Errorf("shell provisioners require qemu:///system with a guest-visible network")
+	}
 	fmt.Printf("Using libvirt connection: %s\n", uri)
 
 	st, err := loadState(layout.StateFile)
@@ -155,6 +158,11 @@ func runUp(args []string) error {
 			fmt.Printf("Would create VM %q via %s\n", cfg.Name, uri)
 			return nil
 		}
+		if cfg.needsSSH() {
+			if err := ensureSSHKey(cfg, layout); err != nil {
+				return err
+			}
+		}
 		if err := os.MkdirAll(layout.AssetDir, 0o755); err != nil {
 			return fmt.Errorf("create asset dir: %w", err)
 		}
@@ -169,7 +177,16 @@ func runUp(args []string) error {
 			return fmt.Errorf("VM %q was created but state could not be written: %w", cfg.Name, err)
 		}
 		fmt.Printf("VM %q created successfully via %s\n", cfg.Name, uri)
+		if len(cfg.Provisioners) > 0 {
+			if err := provisionVM(cfg, st, layout, false, false); err != nil {
+				return fmt.Errorf("VM %q was created but provisioning failed: %w; run vmlite provision after fixing it", cfg.Name, err)
+			}
+		}
 		return nil
+	}
+
+	if len(cfg.Provisioners) > 0 && strings.TrimSpace(st.SSHKeyPath) == "" {
+		return fmt.Errorf("VM %q predates provisioning support; use --recreate to enable shell provisioners", cfg.Name)
 	}
 
 	if !domainExists {
@@ -254,6 +271,12 @@ func runStatus(args []string) error {
 	}
 	if st.ImagePath != "" {
 		fmt.Printf("Image: %s\n", st.ImagePath)
+	}
+	if st.IP != "" {
+		fmt.Printf("IP:    %s\n", st.IP)
+	}
+	if len(st.Provisioned) > 0 {
+		fmt.Printf("Provisioned: %d script(s)\n", len(st.Provisioned))
 	}
 	if strings.Contains(stateText, "running") {
 		return nil

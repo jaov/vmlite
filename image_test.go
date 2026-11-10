@@ -556,8 +556,8 @@ func TestCheckImageTools(t *testing.T) {
 		t.Setenv("PATH", dir)
 		cfg := &Config{Source: Source{Type: sourceCloudImage, Path: "/tmp/base.qcow2", CloudInit: "/tmp/user-data"}}
 		err := CheckImageTools(cfg)
-		if err == nil || !strings.Contains(err.Error(), "cloud_init requires") {
-			t.Fatalf("err = %v, want cloud_init error", err)
+		if err == nil || !strings.Contains(err.Error(), "xorrisofs") {
+			t.Fatalf("err = %v, want ISO tool error", err)
 		}
 	})
 

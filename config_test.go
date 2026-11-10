@@ -117,6 +117,11 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"extra disk no path", base(`, "extra_disks": [{}]`), "extra_disks[0].path is required"},
 		{"bad extra disk device", base(`, "extra_disks": [{"path": "/tmp/x", "device": "floppy"}]`), "extra_disks[0].device must be"},
 		{"bad extra disk format", base(`, "extra_disks": [{"path": "/tmp/x", "format": "vmdk"}]`), "extra_disks[0].format must be"},
+		{"provisioner without cloud image", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "none"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "ssh/provisioners require"},
+		{"provisioner both sources", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "path": "/tmp/a", "inline": "true"}]}`, "exactly one of path or inline"},
+		{"provisioner without source", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell"}]}`, "exactly one of path or inline"},
+		{"provisioner bad run", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true", "run": "sometimes"}]}`, "run must be"},
+		{"provisioner user network", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "network": {"mode": "user"}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "guest-visible network"},
 	}
 
 	for _, tc := range tests {
@@ -167,6 +172,32 @@ func TestLoadConfigURLImage(t *testing.T) {
 	}
 	if cfg.Source.URL == "" || cfg.Source.SHA256 != sha || cfg.Source.Cache != "/tmp/vmlite-cache" {
 		t.Fatalf("source = %+v", cfg.Source)
+	}
+}
+
+func TestLoadConfigProvisioners(t *testing.T) {
+	path := writeConfigFile(t, `{
+		"name": "provisioned",
+		"memory": 1024,
+		"cpus": 1,
+		"source": {"type": "cloud_image", "path": "/tmp/base.qcow2"},
+		"disk": {"size": 5},
+		"ssh": {"user": "deploy"},
+		"provisioners": [
+			{"type": "shell", "inline": "echo once", "run": "once"},
+			{"type": "shell", "path": "./always.sh", "run": "always"}
+		]
+	}`)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.SSH.User != "deploy" {
+		t.Fatalf("SSH.User = %q", cfg.SSH.User)
+	}
+	if len(cfg.Provisioners) != 2 || cfg.Provisioners[1].Run != "always" {
+		t.Fatalf("Provisioners = %+v", cfg.Provisioners)
 	}
 }
 

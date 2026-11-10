@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -69,7 +70,7 @@ func TestStateSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadState: %v", err)
 	}
-	if got == nil || *got != *st {
+	if got == nil || !reflect.DeepEqual(*got, *st) {
 		t.Fatalf("state = %+v, want %+v", got, st)
 	}
 }

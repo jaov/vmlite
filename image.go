@@ -194,7 +194,7 @@ func CheckImageTools(cfg *Config) error {
 		}
 	}
 
-	if strings.TrimSpace(cfg.Source.CloudInit) != "" {
+	if cfg.needsSeed() {
 		found := false
 		for _, bin := range []string{"xorrisofs", "genisoimage", "mkisofs"} {
 			if _, err := exec.LookPath(bin); err == nil {
@@ -203,7 +203,7 @@ func CheckImageTools(cfg *Config) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("cloud_init requires xorrisofs, genisoimage, or mkisofs in PATH")
+			return fmt.Errorf("cloud_init/provisioners require xorrisofs, genisoimage, or mkisofs in PATH")
 		}
 	}
 
@@ -344,7 +344,7 @@ func prepareOverlay(cfg *Config) (string, error) {
 // prepareSeed creates a persistent NoCloud seed ISO. Using our own seed avoids
 // virt-install's transient cloud-init ISO and its forced on_reboot=destroy.
 func prepareSeed(cfg *Config) (string, error) {
-	if strings.TrimSpace(cfg.Source.CloudInit) == "" {
+	if !cfg.needsSeed() {
 		return "", nil
 	}
 
@@ -358,13 +358,18 @@ func prepareSeed(cfg *Config) (string, error) {
 		return "", fmt.Errorf("check cloud-init seed %q: %w", seed, err)
 	}
 
-	userData, err := filepath.Abs(cfg.Source.CloudInit)
-	if err != nil {
-		return "", fmt.Errorf("resolve cloud_init %q: %w", cfg.Source.CloudInit, err)
-	}
-	content, err := os.ReadFile(userData)
-	if err != nil {
-		return "", fmt.Errorf("cloud_init %q is not accessible: %w", cfg.Source.CloudInit, err)
+	var content []byte
+	if strings.TrimSpace(cfg.Source.CloudInit) != "" {
+		userData, err := filepath.Abs(cfg.Source.CloudInit)
+		if err != nil {
+			return "", fmt.Errorf("resolve cloud_init %q: %w", cfg.Source.CloudInit, err)
+		}
+		content, err = os.ReadFile(userData)
+		if err != nil {
+			return "", fmt.Errorf("cloud_init %q is not accessible: %w", cfg.Source.CloudInit, err)
+		}
+	} else {
+		content = []byte("#cloud-config\n")
 	}
 
 	tool, err := isoBuilder()
@@ -384,6 +389,24 @@ func prepareSeed(cfg *Config) (string, error) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "user-data"), content, 0o644); err != nil {
 		return "", fmt.Errorf("write seed user-data: %w", err)
+	}
+	if cfg.needsSSH() {
+		if strings.TrimSpace(cfg.sshPublicKey) == "" {
+			return "", fmt.Errorf("SSH public key is not available; generate keys before creating the seed")
+		}
+		vendor := fmt.Sprintf(`#cloud-config
+users:
+  - name: %s
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - %s
+ssh_pwauth: false
+`, cfg.sshUser(), strings.TrimSpace(cfg.sshPublicKey))
+		if err := os.WriteFile(filepath.Join(dir, "vendor-data"), []byte(vendor), 0o644); err != nil {
+			return "", fmt.Errorf("write seed vendor-data: %w", err)
+		}
 	}
 
 	cmd := exec.Command(tool,

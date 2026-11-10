@@ -119,7 +119,7 @@ func buildSourceArgs(cfg *Config) ([]string, error) {
 			"--import",
 			"--disk", fmt.Sprintf("path=%s,format=qcow2", overlay),
 		}
-		if strings.TrimSpace(cfg.Source.CloudInit) != "" {
+		if cfg.needsSeed() {
 			seed, err := cfg.seedPath()
 			if err != nil {
 				return nil, err

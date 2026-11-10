@@ -46,6 +46,28 @@ configuration file. `up` is idempotent: an unchanged running VM is a no-op,
 a stopped VM is started, and config/connection drift requires `--recreate`.
 `destroy` refuses to remove a running VM unless `--force` is passed.
 
+### Shell provisioners
+
+```json
+"ssh": { "user": "vmlite" },
+"provisioners": [
+  { "type": "shell", "path": "./provision/postgres-tomcat.sh", "run": "once" },
+  { "type": "shell", "inline": "echo refreshed >> /var/tmp/provisioned", "run": "always" }
+]
+```
+
+- `up` generates an ed25519 key under `.vmlite/`, injects the public key through
+  a NoCloud `vendor-data` cloud-config, waits for the NAT guest IP and SSH, then
+  runs the provisioners as root.
+- `run: "once"` skips unchanged scripts; `run: "always"` reruns on every
+  `vmlite provision`.
+- `vmlite provision vm.json` reruns pending/always scripts.
+- `vmlite provision --force vm.json` reruns once-provisioners too.
+- Shell provisioners require a Linux cloud image on `qemu:///system` with a
+  guest-visible network. `session`/user-mode networking is rejected.
+- `vmlite status` reports the guest IP; services are reached at
+  `guest-ip:5432`, `guest-ip:8080`, etc.
+
 A cloud-image example:
 
 ```json

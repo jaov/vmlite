@@ -287,6 +287,21 @@ defaults, and status/destroy without state. Integration coverage includes:
 - `TestUpURLImage` — download, checksum, state, domain creation, and cache
   retention through destroy.
 
+## Shell provisioners
+
+`TestProvisioners` verifies generated key/vendor-data injection, guest IP
+discovery, once/always script semantics, and `vmlite provision`:
+
+```bash
+VMLITE_TEST_PROVISION=1 \
+VMLITE_TEST_IMAGE="$HOME/.cache/vmlite/ubuntu-24.04-minimal-cloudimg-amd64.img" \
+  go test -tags integration -run TestProvisioners -v ./...
+```
+
+It creates an Ubuntu cloud guest with no user-data key, confirms the generated
+`vmlite` account can SSH, runs a once provisioner and an always provisioner,
+reruns `vmlite provision`, and checks the once script was skipped.
+
 ## Self-hosted nested test
 
 `TestVmliteInGuest` creates an Ubuntu builder VM, runs `vmlite install` inside
