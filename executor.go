@@ -30,7 +30,7 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 		args = append(args, "--os-variant", osVariant)
 	}
 	if cfg.Firmware == firmwareUEFI {
-		args = append(args, "--boot", "uefi")
+		args = append(args, bootArgs(cfg.Firmware, nil)...)
 	}
 
 	sourceArgs, err := buildSourceArgs(cfg)
@@ -190,6 +190,22 @@ func primaryDiskArgs(cfg *Config) ([]string, error) {
 		return []string{"--disk", fmt.Sprintf("path=%s,size=%d,format=%s", path, cfg.Disk.Size, cfg.newDiskFormat())}, nil
 	}
 	return []string{"--disk", fmt.Sprintf("size=%d", cfg.Disk.Size)}, nil
+}
+
+// bootArgs composes firmware and boot order into one --boot argument. A boot
+// order is only needed when a source must boot installer media and then switch
+// to the installed disk.
+func bootArgs(firmware string, order []string) []string {
+	if firmware == firmwareUEFI {
+		if len(order) == 0 {
+			return []string{"--boot", "uefi"}
+		}
+		return []string{"--boot", "uefi," + strings.Join(order, ",")}
+	}
+	if len(order) == 0 {
+		return nil
+	}
+	return []string{"--boot", strings.Join(order, ",")}
 }
 
 func buildGraphicsArgs(cfg *Config) ([]string, error) {

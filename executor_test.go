@@ -254,6 +254,25 @@ func TestBuildVirtInstallArgsUEFI(t *testing.T) {
 	}
 }
 
+func TestBootArgs(t *testing.T) {
+	cases := []struct {
+		firmware string
+		order    []string
+		want     []string
+	}{
+		{firmwareBIOS, nil, nil},
+		{firmwareUEFI, nil, []string{"--boot", "uefi"}},
+		{firmwareBIOS, []string{"hd", "cdrom"}, []string{"--boot", "hd,cdrom"}},
+		{firmwareUEFI, []string{"hd", "cdrom"}, []string{"--boot", "uefi,hd,cdrom"}},
+	}
+	for _, tc := range cases {
+		got := bootArgs(tc.firmware, tc.order)
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("bootArgs(%q, %v) = %q, want %q", tc.firmware, tc.order, got, tc.want)
+		}
+	}
+}
+
 func TestBuildVirtInstallArgsGraphics(t *testing.T) {
 	cfg := baseTestConfig()
 	cfg.Graphics = Graphics{Type: graphicsVNC, Listen: "127.0.0.1"}

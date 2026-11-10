@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"vmlite/internal/seed"
 )
 
 var errImageWouldDownload = errors.New("image would be downloaded")
@@ -195,15 +197,8 @@ func CheckImageTools(cfg *Config) error {
 	}
 
 	if cfg.needsSeed() {
-		found := false
-		for _, bin := range []string{"xorrisofs", "genisoimage", "mkisofs"} {
-			if _, err := exec.LookPath(bin); err == nil {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("cloud_init/provisioners require xorrisofs, genisoimage, or mkisofs in PATH")
+		if _, err := seed.Builder(); err != nil {
+			return fmt.Errorf("cloud_init/provisioners: %w", err)
 		}
 	}
 
@@ -279,17 +274,6 @@ func extraDiskFormat(d ExtraDisk) (string, error) {
 	}
 }
 
-// isoBuilder picks an ISO creation tool compatible with virt-install's
-// cloud-init seed flags.
-func isoBuilder() (string, error) {
-	for _, name := range []string{"xorrisofs", "genisoimage", "mkisofs"} {
-		if path, err := exec.LookPath(name); err == nil {
-			return path, nil
-		}
-	}
-	return "", fmt.Errorf("cloud_init requires xorrisofs, genisoimage, or mkisofs in PATH")
-}
-
 // prepareOverlay creates the copy-on-write overlay for a cloud image. It never
 // overwrites an implicit disk path; an explicit disk.path is user-managed and
 // reused.
@@ -348,14 +332,14 @@ func prepareSeed(cfg *Config) (string, error) {
 		return "", nil
 	}
 
-	seed, err := cfg.seedPath()
+	seedPath, err := cfg.seedPath()
 	if err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(seed); err == nil {
-		return seed, nil
+	if _, err := os.Stat(seedPath); err == nil {
+		return seedPath, nil
 	} else if !os.IsNotExist(err) {
-		return "", fmt.Errorf("check cloud-init seed %q: %w", seed, err)
+		return "", fmt.Errorf("check cloud-init seed %q: %w", seedPath, err)
 	}
 
 	var content []byte
@@ -372,23 +356,10 @@ func prepareSeed(cfg *Config) (string, error) {
 		content = []byte("#cloud-config\n")
 	}
 
-	tool, err := isoBuilder()
-	if err != nil {
-		return "", err
-	}
-
-	dir, err := os.MkdirTemp("", "vmlite-seed-")
-	if err != nil {
-		return "", fmt.Errorf("create seed workspace: %w", err)
-	}
-	defer os.RemoveAll(dir)
-
 	metaData := fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", cfg.Name, cfg.Name)
-	if err := os.WriteFile(filepath.Join(dir, "meta-data"), []byte(metaData), 0o644); err != nil {
-		return "", fmt.Errorf("write seed meta-data: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "user-data"), content, 0o644); err != nil {
-		return "", fmt.Errorf("write seed user-data: %w", err)
+	files := []seed.File{
+		{Name: "meta-data", Data: []byte(metaData)},
+		{Name: "user-data", Data: content},
 	}
 	if cfg.needsSSH() {
 		if strings.TrimSpace(cfg.sshPublicKey) == "" {
@@ -404,25 +375,11 @@ users:
       - %s
 ssh_pwauth: false
 `, cfg.sshUser(), strings.TrimSpace(cfg.sshPublicKey))
-		if err := os.WriteFile(filepath.Join(dir, "vendor-data"), []byte(vendor), 0o644); err != nil {
-			return "", fmt.Errorf("write seed vendor-data: %w", err)
-		}
+		files = append(files, seed.File{Name: "vendor-data", Data: []byte(vendor)})
 	}
 
-	cmd := exec.Command(tool,
-		"-o", seed,
-		"-J",
-		"-input-charset", "utf8",
-		"-rational-rock",
-		"-V", "cidata",
-		dir,
-	)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("create cloud-init seed %q: %w: %s", seed, err, strings.TrimSpace(string(out)))
+	if err := seed.WriteISO(seed.Volume{Label: "cidata", Files: files}, seedPath); err != nil {
+		return "", err
 	}
-	if err := os.Chmod(seed, 0o644); err != nil {
-		return "", fmt.Errorf("chmod cloud-init seed %q: %w", seed, err)
-	}
-
-	return seed, nil
+	return seedPath, nil
 }
