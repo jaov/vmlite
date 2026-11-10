@@ -289,8 +289,8 @@ defaults, and status/destroy without state. Integration coverage includes:
 
 ## Self-hosted nested test
 
-`TestVmliteInGuest` creates an Ubuntu builder VM, runs `install.sh` inside it,
-verifies nested KVM, installs the static vmlite binary, and creates a tiny
+`TestVmliteInGuest` creates an Ubuntu builder VM, runs `vmlite install` inside
+it, verifies nested KVM, installs the static vmlite binary, and creates a tiny
 nested VM with `source.type: none` over `qemu:///session`.
 
 ```bash
@@ -306,13 +306,14 @@ Requirements:
 - 4 GiB free in `/tmp` plus roughly 4 GiB of guest RAM.
 - A qemu-readable Ubuntu cloud image. The test stages it into tmpfs; no host
   disk staging is used.
-- `install.sh` installs `qemu-system-x86`, libvirt, `virtinst`, and ISO tools in
-  the guest, then installs the static binary. The nested VM uses
-  `qemu:///session`, so no nested system libvirt network is required.
+- `vmlite install` installs `qemu-system-x86`, libvirt, `virtinst`, ISO tools,
+  and SSH tools in the guest, then installs the static binary. The nested VM
+  uses `qemu:///session`, so no nested system libvirt network is required.
 
-The installer's distro branches are also covered by unit tests through
-`VMLITE_OS_RELEASE` dry runs for Ubuntu/Debian, Fedora/RHEL, Arch, openSUSE,
-and the FreeBSD host rejection.
+The Go installer's distro branches are covered by unit tests for
+Ubuntu/Debian, Fedora/RHEL, Arch, openSUSE, and the FreeBSD host rejection.
+`install.sh` is tested separately as a bootstrap dry run. Read-only host checks
+are available through `vmlite doctor`.
 
 ## Inspecting leftovers
 

@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-var errUsage = errors.New("usage: vmlite [up|status|destroy] [--connect URI] [config.json]")
+var errUsage = errors.New("usage: vmlite [up|status|destroy|install|doctor] [options] [config.json]")
 
 func main() {
 	err := dispatch(os.Args[1:])
@@ -34,6 +34,10 @@ func dispatch(args []string) error {
 		return runStatus(args[1:])
 	case "destroy":
 		return runDestroy(args[1:])
+	case "install":
+		return runInstall(args[1:])
+	case "doctor":
+		return runDoctor(args[1:])
 	default:
 		// Preserve the original `vmlite [config]` form as an implicit up.
 		return runUp(args)

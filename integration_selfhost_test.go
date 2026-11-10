@@ -159,14 +159,11 @@ ssh_pwauth: false
 	if err := scpGuest(t, "vmlite", ip, keyPath, binary, "/tmp/vmlite"); err != nil {
 		t.Fatalf("copy vmlite binary: %v", err)
 	}
-	if err := scpGuest(t, "vmlite", ip, keyPath, "install.sh", "/tmp/install.sh"); err != nil {
-		t.Fatalf("copy install.sh: %v", err)
-	}
 
 	installOut, err := sshGuest(t, "vmlite", ip, keyPath,
-		"DEBIAN_FRONTEND=noninteractive sudo /tmp/install.sh --binary /tmp/vmlite", 25*time.Minute)
+		"DEBIAN_FRONTEND=noninteractive sudo /tmp/vmlite install --binary /tmp/vmlite", 25*time.Minute)
 	if err != nil {
-		t.Fatalf("install.sh in guest: %v\n%s", err, tailText(installOut, 4000))
+		t.Fatalf("vmlite install in guest: %v\n%s", err, tailText(installOut, 4000))
 	}
 
 	verify := `set -e

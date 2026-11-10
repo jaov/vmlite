@@ -21,6 +21,9 @@ type LocalRunner struct {
 	Geteuid func() int
 }
 
+// IsDryRun reports whether the runner only prints commands.
+func (r *LocalRunner) IsDryRun() bool { return r.DryRun }
+
 func (r *LocalRunner) euid() int {
 	if r.Geteuid != nil {
 		return r.Geteuid()

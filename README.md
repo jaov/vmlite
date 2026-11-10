@@ -9,21 +9,26 @@ vmlite runs on Linux hosts with KVM, libvirt, and virt-install. FreeBSD is
 supported as a **guest**, not as a vmlite host.
 
 ```bash
-./install.sh --dry-run   # show what would change
-./install.sh             # install dependencies and build vmlite
+./install.sh --dry-run   # build a temporary vmlite and show the plan
+./install.sh             # install dependencies and vmlite
 ```
 
-The installer handles Debian/Ubuntu, Fedora/RHEL-family, Arch, and openSUSE
-package managers. It installs QEMU, libvirt, virt-install, and ISO tools,
-checks `/dev/kvm`, starts the default libvirt network when present, and adds
-the invoking user to the `libvirt`/`kvm` groups.
+`install.sh` is now a small bootstrap: it builds a temporary vmlite binary and
+runs `vmlite install`, or uses a prebuilt `./vmlite` when Go is unavailable.
+The Go installer handles Debian/Ubuntu, Fedora/RHEL-family, Arch, and openSUSE
+package managers, installs QEMU/libvirt/virt-install/ISO/SSH tools, checks
+`/dev/kvm`, starts the default libvirt network, and adds the invoking user to
+the `libvirt`/`kvm` groups.
 
-Options:
+Options are forwarded to the Go installer:
 
 ```bash
-./install.sh --binary ./vmlite      # install a prebuilt static binary
-./install.sh --no-deps              # skip package installation
-./install.sh --prefix /usr/bin      # choose the install prefix
+vmlite install --dry-run
+vmlite install --binary ./vmlite               # prebuilt local binary
+vmlite install --binary-url URL --binary-sha256 SHA256
+vmlite install --no-deps                       # skip packages
+vmlite install --prefix /usr/bin
+vmlite doctor                                  # read-only readiness check
 ```
 
 ## Usage
