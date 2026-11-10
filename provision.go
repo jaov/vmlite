@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	guestinstall "vmlite/internal/installer"
 	"vmlite/internal/plan"
 )
 
@@ -230,6 +231,12 @@ func finishInstaller(cfg *Config, st *State, layout projectLayout, dryRun bool) 
 	if st.InstallPhase == installPhaseInstalled {
 		return nil
 	}
+	if st.InstallerCompletion == string(guestinstall.CompletionSSH) {
+		if dryRun {
+			fmt.Println("Would wait for the installer to expose SSH")
+		}
+		return nil
+	}
 	if dryRun {
 		fmt.Println("Would wait for the installer, eject its media, and boot the installed disk")
 		return nil
@@ -365,6 +372,7 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 	if len(cfg.Provisioners) == 0 && st.InstallerType == "" {
 		return nil
 	}
+	completionSSH := st.InstallerCompletion == string(guestinstall.CompletionSSH)
 	if len(cfg.Provisioners) > 0 {
 		if strings.TrimSpace(st.SSHKeyPath) == "" {
 			return fmt.Errorf("VM %q has no managed SSH key; recreate it with provisioners enabled", st.Name)
@@ -380,6 +388,8 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 		return fmt.Errorf("VM %q is missing", st.Name)
 	} else if st.InstallerType == "" && !strings.Contains(text, "running") {
 		return fmt.Errorf("VM %q is not running", st.Name)
+	} else if st.InstallerType != "" && completionSSH && strings.Contains(text, "shut off") {
+		return fmt.Errorf("VM %q is shut off; Windows install did not reboot into the installed OS", st.Name)
 	} else if st.InstallerType != "" && !strings.Contains(text, "running") && !strings.Contains(text, "shut off") && !strings.Contains(text, "in shutdown") {
 		return fmt.Errorf("VM %q is %q; expected running or shut off", st.Name, strings.TrimSpace(text))
 	}
@@ -388,7 +398,7 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 		if err := finishInstaller(cfg, st, layout, dryRun); err != nil {
 			return err
 		}
-		if len(cfg.Provisioners) == 0 {
+		if len(cfg.Provisioners) == 0 && !completionSSH {
 			return nil
 		}
 	}
@@ -400,8 +410,12 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 			ip = "<guest-ip>"
 		}
 	} else {
+		ipTimeout := 5 * time.Minute
+		if completionSSH {
+			ipTimeout = 30 * time.Minute
+		}
 		var err error
-		ip, err = waitForIPv4(st.LibvirtURI, st.Name, 5*time.Minute)
+		ip, err = waitForIPv4(st.LibvirtURI, st.Name, ipTimeout)
 		if err != nil {
 			return err
 		}
@@ -417,9 +431,20 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 		if st.InstallerType != "" {
 			timeout = 10 * time.Minute
 		}
+		if completionSSH {
+			timeout = 30 * time.Minute
+		}
 		if err := waitForSSH(context.Background(), runner, timeout); err != nil {
 			return err
 		}
+		if completionSSH && st.InstallPhase != installPhaseInstalled {
+			if err := markInstalled(st, layout); err != nil {
+				return err
+			}
+		}
+	}
+	if len(cfg.Provisioners) == 0 {
+		return nil
 	}
 
 	var steps plan.Plan

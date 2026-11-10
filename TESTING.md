@@ -227,6 +227,25 @@ rather than attached as a separate seed. `pkgsel` needs guest access to
 `deb.debian.org` (or a preseeded mirror) to install `openssh-server` and
 `sudo`.
 
+### Windows autounattend test
+
+A full Windows test needs a Windows ISO, an `autounattend.xml` that enables
+OpenSSH and installs `{{VMLITE_SSH_AUTHORIZED_KEY}}`, and a large work
+filesystem:
+
+```bash
+VMLITE_TEST_WINDOWS_INSTALL=1 \
+VMLITE_TEST_WINDOWS_ISO=/large/windows.iso \
+VMLITE_TEST_WINDOWS_UNATTEND=/large/autounattend.xml \
+VMLITE_TEST_WORKDIR=/large/disk \
+  go test -tags integration -run TestWindowsAutoinstall -v ./...
+```
+
+The test uses Windows 11 defaults (UEFI, Secure Boot, TPM 2.0, SATA disk,
+64 GiB sparse disk) and a PowerShell provisioner. Set
+`VMLITE_TEST_WINDOWS_LEGACY=1` for Windows 10/Server without TPM or Secure
+Boot. It skips unless the work directory has at least 40 GiB free.
+
 ### Windows PE test
 
 Build a small WinPE ISO on Windows using the ADK + WinPE add-on:

@@ -68,6 +68,34 @@ func TestPrepareInstallerSeed(t *testing.T) {
 	}
 }
 
+func TestNewStateWindowsInstaller(t *testing.T) {
+	layout := projectLayout{
+		ConfigPath: "/tmp/vm.json",
+		StateFile:  "/tmp/.vmlite/win.json",
+		AssetDir:   "/tmp/.vmlite/win",
+	}
+	cfg := &Config{
+		Name: "win",
+		Source: Source{
+			Type:      sourceISO,
+			Path:      "/tmp/win.iso",
+			Installer: &Installer{Type: "windows_autounattend", Inline: "<unattend/>"},
+		},
+		assetDir: layout.AssetDir,
+	}
+	applyProjectDefaults(cfg, layout)
+	st, err := newState(cfg, layout, systemURI, "hash", "uuid")
+	if err != nil {
+		t.Fatalf("newState: %v", err)
+	}
+	if st.InstallerCompletion != "ssh" {
+		t.Fatalf("completion = %q", st.InstallerCompletion)
+	}
+	if st.SeedPath != filepath.Join(layout.AssetDir, "win-installer-seed.iso") {
+		t.Fatalf("seed = %q", st.SeedPath)
+	}
+}
+
 func TestPrepareInstallerISO(t *testing.T) {
 	binDir := t.TempDir()
 	argsLog := filepath.Join(binDir, "xorriso.log")
@@ -141,7 +169,7 @@ func TestNewStateInstaller(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newState: %v", err)
 	}
-	if st.InstallerType != "ubuntu_autoinstall" || st.InstallPhase != installPhaseInstalling {
+	if st.InstallerType != "ubuntu_autoinstall" || st.InstallPhase != installPhaseInstalling || st.InstallerCompletion != "shutdown" {
 		t.Fatalf("installer state = %+v", st)
 	}
 	wantSeed := filepath.Join(layout.AssetDir, "auto-installer-seed.iso")

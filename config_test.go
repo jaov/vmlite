@@ -134,6 +134,7 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"bad tpm version", base(`, "firmware": "uefi", "tpm": {"version": "3.0"}`), "tpm.version must be"},
 		{"bad tpm backend", base(`, "firmware": "uefi", "tpm": {"backend": "passthrough"}`), "tpm.backend must be"},
 		{"bad disk bus", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "none"}, "disk": {"size": 5, "bus": "ide"}}`, "disk.bus must be"},
+		{"windows installer without answer file", `{"name": "win", "memory": 4096, "cpus": 2, "source": {"type": "iso", "path": "/tmp/win.iso", "installer": {"type": "windows_autounattend"}}, "disk": {"size": 64, "bus": "sata"}}`, "requires config or inline"},
 	}
 
 	for _, tc := range tests {
@@ -236,6 +237,39 @@ func TestLoadConfigWindowsDevices(t *testing.T) {
 	}
 	if cfg.diskBus() != diskBusSATA {
 		t.Fatalf("diskBus = %q", cfg.diskBus())
+	}
+}
+
+func TestLoadConfigWindowsInstaller(t *testing.T) {
+	path := writeConfigFile(t, `{
+		"name": "win11",
+		"memory": 4096,
+		"cpus": 2,
+		"os_variant": "win11",
+		"firmware": "uefi",
+		"secure_boot": true,
+		"tpm": {"version": "2.0"},
+		"source": {
+			"type": "iso",
+			"path": "/tmp/win11.iso",
+			"installer": {"type": "windows_autounattend", "inline": "<unattend/>"}
+		},
+		"disk": {"size": 64, "bus": "sata"},
+		"provisioners": [{"type": "powershell", "inline": "Write-Output hi"}]
+	}`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.sshUser() != "Administrator" {
+		t.Fatalf("sshUser = %q", cfg.sshUser())
+	}
+	spec, err := cfg.installerSpec()
+	if err != nil {
+		t.Fatalf("installerSpec: %v", err)
+	}
+	if spec.DiskBus != "sata" || spec.Completion != "ssh" {
+		t.Fatalf("spec = %+v", spec)
 	}
 }
 

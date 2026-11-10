@@ -165,7 +165,11 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 			return nil, err
 		}
 		if spec.Type != "" {
-			diskArgs, err = primaryDiskArgsBus(cfg, "virtio")
+			defaultBus := spec.DiskBus
+			if defaultBus == "" {
+				defaultBus = "virtio"
+			}
+			diskArgs, err = primaryDiskArgsBus(cfg, defaultBus)
 			if err != nil {
 				return nil, err
 			}
@@ -197,6 +201,9 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 				"--disk", diskSpec,
 				"--sysinfo", "type=smbios,system.serial=ds=nocloud",
 			)
+		}
+		if spec.Completion == guestinstall.CompletionSSH {
+			args = append(args, "--events", "on_reboot=restart,on_poweroff=destroy,on_crash=restart")
 		}
 		return args, nil
 
@@ -372,6 +379,19 @@ func RunVirtInstall(cfg *Config, libvirtURI string) error {
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("virt-install failed: %w", err)
+	}
+	if err := configureInstallerLifecycle(cfg, libvirtURI, spec); err != nil {
+		return err
+	}
+	return nil
+}
+
+func configureInstallerLifecycle(cfg *Config, libvirtURI string, spec guestinstall.Spec) error {
+	if spec.Completion != guestinstall.CompletionSSH {
+		return nil
+	}
+	if out, err := runVirsh(libvirtURI, "set-lifecycle-action", cfg.Name, "reboot", "restart", "--live", "--config"); err != nil {
+		return fmt.Errorf("configure installer reboot lifecycle for %q: %w: %s", cfg.Name, err, strings.TrimSpace(out))
 	}
 	return nil
 }

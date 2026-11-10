@@ -185,6 +185,19 @@ func TestShellStepRootSkipsSudo(t *testing.T) {
 	}
 }
 
+func TestFinishInstallerSSHCompletionSkipsShutdown(t *testing.T) {
+	st := &State{
+		Version:             1,
+		Name:                "win",
+		InstallerType:       "windows_autounattend",
+		InstallerCompletion: "ssh",
+		InstallPhase:        installPhaseInstalling,
+	}
+	if err := finishInstaller(&Config{}, st, projectLayout{}, false); err != nil {
+		t.Fatalf("finishInstaller: %v", err)
+	}
+}
+
 func TestPowerShellStep(t *testing.T) {
 	binDir := t.TempDir()
 	logPath := filepath.Join(binDir, "ssh.log")

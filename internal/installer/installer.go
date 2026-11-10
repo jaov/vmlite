@@ -17,6 +17,8 @@ const (
 	FedoraKickstart = "fedora_kickstart"
 	// DebianPreseed is the Debian installer preseed provider.
 	DebianPreseed = "debian_preseed"
+	// WindowsAutoUnattend is the Windows Setup autounattend provider.
+	WindowsAutoUnattend = "windows_autounattend"
 )
 
 // Input is the host and account information an installer may inject.
@@ -27,6 +29,16 @@ type Input struct {
 	AnswerFile []byte
 }
 
+// Completion describes how vmlite knows an unattended install is finished.
+type Completion string
+
+const (
+	// CompletionShutdown waits for the installer domain to shut off.
+	CompletionShutdown Completion = "shutdown"
+	// CompletionSSH waits for the installed guest to expose SSH.
+	CompletionSSH Completion = "ssh"
+)
+
 // Spec is the complete, distro-independent recipe for unattended installation.
 type Spec struct {
 	Type       string
@@ -34,6 +46,11 @@ type Spec struct {
 	SeedDevice string   // disk or cdrom
 	BootOrder  []string // final boot order, e.g. hd,cdrom
 	KernelArgs []string
+	// DiskBus is the default bus for installer primary disks. Empty means
+	// virtio, preserving Linux installer behavior.
+	DiskBus string
+	// Completion selects the install-complete signal. Empty means shutdown.
+	Completion Completion
 	// InjectFiles are added to a remastered copy of the installer ISO. This is
 	// used when an installer can only read its answer file from the install
 	// media itself.
@@ -46,6 +63,12 @@ type Installer interface {
 	Spec(Input) (Spec, error)
 }
 
+// AnswerFileRequirement marks installers that cannot generate a default answer
+// file and require installer.config or installer.inline.
+type AnswerFileRequirement interface {
+	RequiresAnswerFile() bool
+}
+
 // Lookup returns the installer registered for type.
 func Lookup(typ string) (Installer, error) {
 	switch typ {
@@ -55,6 +78,8 @@ func Lookup(typ string) (Installer, error) {
 		return fedoraKickstart{}, nil
 	case DebianPreseed:
 		return debianPreseed{}, nil
+	case WindowsAutoUnattend:
+		return windowsAutoUnattend{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported installer.type %q", typ)
 	}

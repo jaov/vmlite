@@ -1,10 +1,13 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	guestinstall "vmlite/internal/installer"
 )
 
 func baseTestConfig() Config {
@@ -427,6 +430,71 @@ func TestBuildVirtInstallArgsDiskSourceBus(t *testing.T) {
 	}
 	if !containsAll(got, "--import", "path="+disk+",format=qcow2,bus=sata") {
 		t.Fatalf("args missing disk bus: %q", got)
+	}
+}
+
+func TestBuildVirtInstallArgsWindowsAutoUnattend(t *testing.T) {
+	iso := filepath.Join(t.TempDir(), "win11.iso")
+	cfg := baseTestConfig()
+	cfg.OSVariant = "win11"
+	cfg.Firmware = firmwareUEFI
+	cfg.SecureBoot = true
+	cfg.TPM = &TPM{Version: tpmVersion20}
+	cfg.Source = Source{
+		Type: sourceISO,
+		Path: iso,
+		Installer: &Installer{
+			Type:   "windows_autounattend",
+			Inline: "<unattend/>",
+		},
+	}
+	cfg.assetDir = t.TempDir()
+	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
+
+	got, err := buildVirtInstallArgs(&cfg, systemURI)
+	if err != nil {
+		t.Fatalf("buildVirtInstallArgs: %v", err)
+	}
+	seedPath := filepath.Join(cfg.assetDir, "demo-installer-seed.iso")
+	if !containsAll(got,
+		"--boot", "uefi,loader.secure=on,hd,cdrom",
+		"--tpm", "backend.type=emulator,backend.version=2.0",
+		"--disk", "size=5,bus=sata",
+		"--cdrom", iso,
+		"--disk", "path="+seedPath+",format=raw,readonly=on,device=cdrom",
+		"--events", "on_reboot=restart,on_poweroff=destroy,on_crash=restart",
+	) {
+		t.Fatalf("args missing Windows installer settings: %q", got)
+	}
+}
+
+func TestConfigureInstallerLifecycle(t *testing.T) {
+	binDir := t.TempDir()
+	logPath := filepath.Join(binDir, "virsh.log")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + logPath + "\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(binDir, "virsh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake virsh: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	cfg := &Config{Name: "win"}
+	if err := configureInstallerLifecycle(cfg, systemURI, guestinstall.Spec{Completion: guestinstall.CompletionShutdown}); err != nil {
+		t.Fatalf("shutdown lifecycle: %v", err)
+	}
+	if _, err := os.Stat(logPath); err == nil {
+		t.Fatal("shutdown installer unexpectedly changed lifecycle")
+	}
+	if err := configureInstallerLifecycle(cfg, systemURI, guestinstall.Spec{Completion: guestinstall.CompletionSSH}); err != nil {
+		t.Fatalf("ssh lifecycle: %v", err)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read virsh log: %v", err)
+	}
+	for _, want := range []string{"set-lifecycle-action", "win", "reboot", "restart", "--live", "--config"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("virsh log missing %q:\n%s", want, data)
+		}
 	}
 }
 

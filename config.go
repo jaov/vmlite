@@ -93,6 +93,15 @@ func (c *Config) sshUser() string {
 	if strings.TrimSpace(c.SSH.User) != "" {
 		return c.SSH.User
 	}
+	if c.Source.Installer != nil {
+		if impl, err := installer.Lookup(c.Source.Installer.Type); err == nil {
+			if d, ok := impl.(interface{ DefaultSSHUser() string }); ok {
+				if user := strings.TrimSpace(d.DefaultSSHUser()); user != "" {
+					return user
+				}
+			}
+		}
+	}
 	return "vmlite"
 }
 
@@ -488,6 +497,11 @@ func validateInstaller(inst *Installer) error {
 	hasInline := inst.Inline != ""
 	if hasConfig && hasInline {
 		return fmt.Errorf("source.installer requires at most one of config or inline")
+	}
+	if impl, err := installer.Lookup(inst.Type); err == nil {
+		if req, ok := impl.(installer.AnswerFileRequirement); ok && req.RequiresAnswerFile() && !hasConfig && !hasInline {
+			return fmt.Errorf("source.installer.type %q requires config or inline", inst.Type)
+		}
 	}
 	return nil
 }

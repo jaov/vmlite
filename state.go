@@ -9,32 +9,35 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	guestinstall "vmlite/internal/installer"
 )
 
 // State records the managed VM and the files vmlite created for it.
 type State struct {
-	Version          int               `json:"version"`
-	Name             string            `json:"name"`
-	ConfigPath       string            `json:"config_path"`
-	ConfigHash       string            `json:"config_hash"`
-	LibvirtURI       string            `json:"libvirt_uri"`
-	UUID             string            `json:"uuid,omitempty"`
-	ImagePath        string            `json:"image_path,omitempty"`
-	ImageSHA256      string            `json:"image_sha256,omitempty"`
-	DiskPath         string            `json:"disk_path,omitempty"`
-	SeedPath         string            `json:"seed_path,omitempty"`
-	InstallerISOPath string            `json:"installer_iso_path,omitempty"`
-	AssetDir         string            `json:"asset_dir,omitempty"`
-	PoolName         string            `json:"pool_name,omitempty"`
-	SSHKeyPath       string            `json:"ssh_key_path,omitempty"`
-	SSHKeyGenerated  bool              `json:"ssh_key_generated,omitempty"`
-	SSHUser          string            `json:"ssh_user,omitempty"`
-	IP               string            `json:"ip,omitempty"`
-	InstallerType    string            `json:"installer_type,omitempty"`
-	InstallPhase     string            `json:"install_phase,omitempty"`
-	Provisioned      []ProvisionRecord `json:"provisioned,omitempty"`
-	CreatedAt        string            `json:"created_at"`
-	UpdatedAt        string            `json:"updated_at"`
+	Version             int               `json:"version"`
+	Name                string            `json:"name"`
+	ConfigPath          string            `json:"config_path"`
+	ConfigHash          string            `json:"config_hash"`
+	LibvirtURI          string            `json:"libvirt_uri"`
+	UUID                string            `json:"uuid,omitempty"`
+	ImagePath           string            `json:"image_path,omitempty"`
+	ImageSHA256         string            `json:"image_sha256,omitempty"`
+	DiskPath            string            `json:"disk_path,omitempty"`
+	SeedPath            string            `json:"seed_path,omitempty"`
+	InstallerISOPath    string            `json:"installer_iso_path,omitempty"`
+	AssetDir            string            `json:"asset_dir,omitempty"`
+	PoolName            string            `json:"pool_name,omitempty"`
+	SSHKeyPath          string            `json:"ssh_key_path,omitempty"`
+	SSHKeyGenerated     bool              `json:"ssh_key_generated,omitempty"`
+	SSHUser             string            `json:"ssh_user,omitempty"`
+	IP                  string            `json:"ip,omitempty"`
+	InstallerType       string            `json:"installer_type,omitempty"`
+	InstallerCompletion string            `json:"installer_completion,omitempty"`
+	InstallPhase        string            `json:"install_phase,omitempty"`
+	Provisioned         []ProvisionRecord `json:"provisioned,omitempty"`
+	CreatedAt           string            `json:"created_at"`
+	UpdatedAt           string            `json:"updated_at"`
 }
 
 type ProvisionRecord struct {
@@ -199,6 +202,11 @@ func newState(cfg *Config, layout projectLayout, uri, configHash, uuid string) (
 		if err != nil {
 			return nil, err
 		}
+		completion := spec.Completion
+		if completion == "" {
+			completion = guestinstall.CompletionShutdown
+		}
+		st.InstallerCompletion = string(completion)
 		if spec.Seed != nil {
 			seed, err := cfg.installerSeedPath()
 			if err != nil {

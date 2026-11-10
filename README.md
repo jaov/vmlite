@@ -136,6 +136,48 @@ automatically. The default kickstart installs the Fedora Server environment,
 creates the SSH user, installs the generated key with `sshkey`, enables sshd,
 and grants NOPASSWD sudo.
 
+### Windows guests
+
+Windows uses `autounattend.xml` as answer media. The file is attached as a
+CD-ROM; Windows Setup scans removable media for it. The answer file must set up
+OpenSSH and authorize the generated key. Use these placeholders:
+
+- `{{VMLITE_HOSTNAME}}`
+- `{{VMLITE_SSH_USER}}`
+- `{{VMLITE_SSH_AUTHORIZED_KEY}}`
+
+```json
+{
+  "name": "win11",
+  "memory": 4096,
+  "cpus": 2,
+  "os_variant": "win11",
+  "firmware": "uefi",
+  "secure_boot": true,
+  "tpm": { "version": "2.0" },
+  "source": {
+    "type": "iso",
+    "path": "/isos/win11.iso",
+    "installer": {
+      "type": "windows_autounattend",
+      "config": "./autounattend.xml"
+    }
+  },
+  "disk": { "size": 64, "format": "qcow2", "bus": "sata" },
+  "provisioners": [
+    { "type": "powershell", "inline": "Set-Content C:\\vmlite-ok.txt 'ready'" }
+  ]
+}
+```
+
+- `ssh.user` defaults to `Administrator` for `windows_autounattend`.
+- Install completion is SSH-based: `vmlite provision` waits for the installed
+  Windows guest to expose SSH instead of waiting for the installer domain to
+  shut off.
+- `disk.bus: "sata"` avoids virtio driver injection during Setup. Use `virtio`
+  only when `virtio-win` drivers are integrated into the answer media.
+- Windows guest disks are large; a practical test needs 30–64 GiB.
+
 ### Windows PE boot tests
 
 Windows client ISOs are too large for the default CI disk budget, so the first

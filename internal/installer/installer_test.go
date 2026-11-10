@@ -209,6 +209,54 @@ func TestDebianPreseedPlaceholders(t *testing.T) {
 	}
 }
 
+func TestWindowsSpec(t *testing.T) {
+	impl, err := Lookup(WindowsAutoUnattend)
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+	if d, ok := impl.(interface{ DefaultSSHUser() string }); !ok || d.DefaultSSHUser() != "Administrator" {
+		t.Fatalf("DefaultSSHUser = %v", impl)
+	}
+	spec, err := impl.Spec(Input{
+		Hostname:   "win-vm",
+		SSHUser:    "Administrator",
+		SSHKey:     "ssh-ed25519 AAAA",
+		AnswerFile: []byte("<unattend host=\"{{VMLITE_HOSTNAME}}\" user=\"{{VMLITE_SSH_USER}}\" key=\"{{VMLITE_SSH_AUTHORIZED_KEY}}\"/>"),
+	})
+	if err != nil {
+		t.Fatalf("Spec: %v", err)
+	}
+	if spec.Type != WindowsAutoUnattend || spec.Seed == nil {
+		t.Fatalf("spec = %+v", spec)
+	}
+	if spec.Seed.Label != "VMLITE" || spec.SeedDevice != "cdrom" {
+		t.Fatalf("seed = %+v", spec.Seed)
+	}
+	if len(spec.Seed.Files) != 1 || spec.Seed.Files[0].Name != "autounattend.xml" {
+		t.Fatalf("seed files = %+v", spec.Seed.Files)
+	}
+	if spec.DiskBus != "sata" || spec.Completion != CompletionSSH {
+		t.Fatalf("disk bus/completion = %q/%q", spec.DiskBus, spec.Completion)
+	}
+	if got := strings.Join(spec.BootOrder, ","); got != "hd,cdrom" {
+		t.Fatalf("boot order = %q", got)
+	}
+	answer := string(spec.Seed.Files[0].Data)
+	for _, want := range []string{`host="win-vm"`, `user="Administrator"`, `key="ssh-ed25519 AAAA"`} {
+		if !strings.Contains(answer, want) {
+			t.Errorf("autounattend missing %q:\n%s", want, answer)
+		}
+	}
+}
+
+func TestWindowsRequiresAnswerFile(t *testing.T) {
+	impl, _ := Lookup(WindowsAutoUnattend)
+	_, err := impl.Spec(Input{Hostname: "win", SSHUser: "Administrator", SSHKey: "ssh-ed25519 AAAA"})
+	if err == nil || !strings.Contains(err.Error(), "requires installer.config") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestUbuntuRejectsUnsafeUser(t *testing.T) {
 	impl, _ := Lookup(UbuntuAutoinstall)
 	_, err := impl.Spec(Input{Hostname: "demo", SSHUser: `bad"user`, SSHKey: "ssh-ed25519 AAAA"})
