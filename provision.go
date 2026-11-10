@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -70,6 +71,10 @@ func ensureSSHKey(cfg *Config, layout projectLayout) error {
 		cfg.sshPublicKey = pub
 		cfg.sshKeyGenerated = false
 		return nil
+	}
+
+	if !cfg.canGenerateSSHKey() {
+		return fmt.Errorf("ssh.key is required for source.type %q", cfg.Source.Type)
 	}
 
 	if _, err := exec.LookPath("ssh-keygen"); err != nil {
@@ -191,21 +196,189 @@ func (s *shellStep) Apply(ctx context.Context, r plan.Runner) error {
 	return saveState(s.stateFile, s.state)
 }
 
-func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun bool) error {
-	if len(cfg.Provisioners) == 0 {
+func guestSSHRunner(cfg *Config, st *State, ip string, dryRun bool) *plan.SSHRunner {
+	user := st.SSHUser
+	if user == "" {
+		user = cfg.sshUser()
+	}
+	return &plan.SSHRunner{
+		Host:   ip,
+		User:   user,
+		Key:    st.SSHKeyPath,
+		DryRun: dryRun,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	}
+}
+
+// finishInstaller waits for an unattended installer to reboot, ejects the
+// installer CD, and starts the installed disk. It also accepts an already
+// running installed system if SSH is reachable.
+func finishInstaller(cfg *Config, st *State, layout projectLayout, dryRun bool) error {
+	if st.InstallPhase == installPhaseInstalled {
 		return nil
 	}
-	if strings.TrimSpace(st.SSHKeyPath) == "" {
-		return fmt.Errorf("VM %q has no managed SSH key; recreate it with provisioners enabled", st.Name)
+	if dryRun {
+		fmt.Println("Would wait for the installer, eject its media, and boot the installed disk")
+		return nil
 	}
-	if st.LibvirtURI == sessionURI {
-		return fmt.Errorf("shell provisioners require qemu:///system with a guest-visible network")
+
+	if strings.TrimSpace(st.SSHKeyPath) != "" {
+		if ip, err := waitForIPv4(st.LibvirtURI, st.Name, 15*time.Second); err == nil {
+			runner := guestSSHRunner(cfg, st, ip, false)
+			attempt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			err := runner.Run(attempt, plan.Command{Name: "true"})
+			cancel()
+			if err == nil {
+				if err := ejectInstallerMedia(st.LibvirtURI, st.Name, true); err != nil {
+					return err
+				}
+				if err := clearInstallerBoot(st.LibvirtURI, st.Name); err != nil {
+					return err
+				}
+				return markInstalled(st, layout)
+			}
+		}
 	}
-	if cfg.Network.Mode == networkModeUser {
-		return fmt.Errorf("shell provisioners require a guest-visible network, not network.mode=user")
+
+	timeout := 30 * time.Minute
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		text, exists := domainStatus(st.LibvirtURI, st.Name)
+		if !exists {
+			return fmt.Errorf("installer VM %q disappeared", st.Name)
+		}
+		text = strings.TrimSpace(text)
+		if strings.Contains(text, "shut off") {
+			if err := ejectInstallerMedia(st.LibvirtURI, st.Name, false); err != nil {
+				return err
+			}
+			if err := clearInstallerBoot(st.LibvirtURI, st.Name); err != nil {
+				return err
+			}
+			if out, err := runVirsh(st.LibvirtURI, "start", st.Name); err != nil {
+				return fmt.Errorf("start installed VM %q: %w: %s", st.Name, err, strings.TrimSpace(out))
+			}
+			return markInstalled(st, layout)
+		}
+		if !strings.Contains(text, "running") {
+			return fmt.Errorf("installer VM %q is %q; expected running or shut off", st.Name, text)
+		}
+		time.Sleep(5 * time.Second)
 	}
-	if text, exists := domainStatus(st.LibvirtURI, st.Name); !exists || !strings.Contains(text, "running") {
+	return fmt.Errorf("installer VM %q did not finish within %s", st.Name, timeout)
+}
+
+func markInstalled(st *State, layout projectLayout) error {
+	st.InstallPhase = installPhaseInstalled
+	st.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	return saveState(layout.StateFile, st)
+}
+
+func ejectInstallerMedia(uri, name string, live bool) error {
+	out, err := runVirsh(uri, "domblklist", name, "--details")
+	if err != nil {
+		return fmt.Errorf("list media for %q: %w: %s", name, err, strings.TrimSpace(out))
+	}
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || fields[1] != "cdrom" {
+			continue
+		}
+		if fields[3] == "-" {
+			continue
+		}
+		target := fields[2]
+		args := []string{"change-media", name, target, "--eject"}
+		if live {
+			args = append(args, "--live")
+		}
+		args = append(args, "--config")
+		if out, err := runVirsh(uri, args...); err != nil {
+			if strings.Contains(out, "doesn't have media") {
+				continue
+			}
+			return fmt.Errorf("eject %s from %q: %w: %s", target, name, err, strings.TrimSpace(out))
+		}
+	}
+	return nil
+}
+
+var installerKernelXML = regexp.MustCompile(`(?s)\s*<kernel\b[^>]*(?:/>|>.*?</kernel>)`)
+var installerInitrdXML = regexp.MustCompile(`(?s)\s*<initrd\b[^>]*(?:/>|>.*?</initrd>)`)
+var installerCmdlineXML = regexp.MustCompile(`(?s)\s*<cmdline\b[^>]*>.*?</cmdline>`)
+var installerOnRebootXML = regexp.MustCompile(`(?s)\s*<on_reboot>.*?</on_reboot>`)
+
+// clearInstallerBoot removes the direct kernel/initrd boot described by
+// virt-install's --location install phase. Without this the defined domain
+// would boot the installer kernel again after the installer reboots.
+func clearInstallerBoot(uri, name string) error {
+	out, err := runVirsh(uri, "dumpxml", name)
+	if err != nil {
+		return fmt.Errorf("dump domain %q: %w: %s", name, err, strings.TrimSpace(out))
+	}
+	cleaned := out
+	for _, re := range []*regexp.Regexp{
+		installerKernelXML,
+		installerInitrdXML,
+		installerCmdlineXML,
+		installerOnRebootXML,
+	} {
+		cleaned = re.ReplaceAllString(cleaned, "")
+	}
+	if cleaned == out {
+		return nil
+	}
+
+	tmp, err := os.CreateTemp("", "vmlite-domain-*.xml")
+	if err != nil {
+		return fmt.Errorf("create domain XML temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.WriteString(cleaned); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write domain XML: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close domain XML: %w", err)
+	}
+	if out, err := runVirsh(uri, "define", tmpName); err != nil {
+		return fmt.Errorf("redefine installed VM %q: %w: %s", name, err, strings.TrimSpace(out))
+	}
+	return nil
+}
+
+func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun bool) error {
+	if len(cfg.Provisioners) == 0 && st.InstallerType == "" {
+		return nil
+	}
+	if len(cfg.Provisioners) > 0 {
+		if strings.TrimSpace(st.SSHKeyPath) == "" {
+			return fmt.Errorf("VM %q has no managed SSH key; recreate it with provisioners enabled", st.Name)
+		}
+		if st.LibvirtURI == sessionURI {
+			return fmt.Errorf("shell provisioners require qemu:///system with a guest-visible network")
+		}
+		if cfg.Network.Mode == networkModeUser {
+			return fmt.Errorf("shell provisioners require a guest-visible network, not network.mode=user")
+		}
+	}
+	if text, exists := domainStatus(st.LibvirtURI, st.Name); !exists {
+		return fmt.Errorf("VM %q is missing", st.Name)
+	} else if st.InstallerType == "" && !strings.Contains(text, "running") {
 		return fmt.Errorf("VM %q is not running", st.Name)
+	} else if st.InstallerType != "" && !strings.Contains(text, "running") && !strings.Contains(text, "shut off") {
+		return fmt.Errorf("VM %q is %q; expected running or shut off", st.Name, strings.TrimSpace(text))
+	}
+
+	if st.InstallerType != "" {
+		if err := finishInstaller(cfg, st, layout, dryRun); err != nil {
+			return err
+		}
+		if len(cfg.Provisioners) == 0 {
+			return nil
+		}
 	}
 
 	var ip string
@@ -226,20 +399,13 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 		}
 	}
 
-	user := st.SSHUser
-	if user == "" {
-		user = cfg.sshUser()
-	}
-	runner := &plan.SSHRunner{
-		Host:   ip,
-		User:   user,
-		Key:    st.SSHKeyPath,
-		DryRun: dryRun,
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
-	}
+	runner := guestSSHRunner(cfg, st, ip, dryRun)
 	if !dryRun {
-		if err := waitForSSH(context.Background(), runner, 5*time.Minute); err != nil {
+		timeout := 5 * time.Minute
+		if st.InstallerType != "" {
+			timeout = 10 * time.Minute
+		}
+		if err := waitForSSH(context.Background(), runner, timeout); err != nil {
 			return err
 		}
 	}

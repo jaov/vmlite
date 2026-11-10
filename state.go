@@ -29,6 +29,8 @@ type State struct {
 	SSHKeyGenerated bool              `json:"ssh_key_generated,omitempty"`
 	SSHUser         string            `json:"ssh_user,omitempty"`
 	IP              string            `json:"ip,omitempty"`
+	InstallerType   string            `json:"installer_type,omitempty"`
+	InstallPhase    string            `json:"install_phase,omitempty"`
 	Provisioned     []ProvisionRecord `json:"provisioned,omitempty"`
 	CreatedAt       string            `json:"created_at"`
 	UpdatedAt       string            `json:"updated_at"`
@@ -39,6 +41,11 @@ type ProvisionRecord struct {
 	SHA256      string `json:"sha256"`
 	CompletedAt string `json:"completed_at"`
 }
+
+const (
+	installPhaseInstalling = "installing"
+	installPhaseInstalled  = "installed"
+)
 
 type projectLayout struct {
 	ConfigPath string
@@ -137,6 +144,7 @@ func saveState(path string, st *State) error {
 
 // applyProjectDefaults makes the managed disk location deterministic.
 func applyProjectDefaults(cfg *Config, layout projectLayout) {
+	cfg.assetDir = layout.AssetDir
 	if cfg.Source.Type == sourceCloudImage && strings.TrimSpace(cfg.Disk.Path) == "" {
 		cfg.Disk.Path = filepath.Join(layout.AssetDir, "disk.qcow2")
 	}
@@ -182,6 +190,18 @@ func newState(cfg *Config, layout projectLayout, uri, configHash, uuid string) (
 			return nil, err
 		}
 		st.SeedPath = seed
+	}
+	if cfg.hasInstaller() {
+		st.InstallerType = cfg.Source.Installer.Type
+		st.InstallPhase = installPhaseInstalling
+		seed, err := cfg.installerSeedPath()
+		if err != nil {
+			return nil, err
+		}
+		st.SeedPath = seed
+		// virt-install may create a directory pool for the seed media's
+		// directory; record it so destroy cleans it up.
+		st.PoolName = filepath.Base(layout.AssetDir)
 	}
 	if strings.TrimSpace(cfg.SSH.Key) != "" {
 		key, err := filepath.Abs(cfg.SSH.Key)

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	guestinstall "vmlite/internal/installer"
 )
 
 // buildVirtInstallArgs translates cfg and libvirtURI into the virt-install
@@ -29,11 +31,18 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 	if osVariant != "" {
 		args = append(args, "--os-variant", osVariant)
 	}
-	if cfg.Firmware == firmwareUEFI {
-		args = append(args, bootArgs(cfg.Firmware, nil)...)
+	spec, err := cfg.installerSpec()
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, bootArgs(cfg.Firmware, spec.BootOrder)...)
+	if cfg.hasInstaller() {
+		// Installer disks are sparse qcow2 and often live on smaller tmpfs
+		// pools; the fully-allocated capacity check is too pessimistic.
+		args = append(args, "--check", "disk_size=off")
 	}
 
-	sourceArgs, err := buildSourceArgs(cfg)
+	sourceArgs, err := buildSourceArgs(cfg, spec)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +110,7 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 	return args, nil
 }
 
-func buildSourceArgs(cfg *Config) ([]string, error) {
+func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 	switch cfg.Source.Type {
 	case sourceNone:
 		diskArgs, err := primaryDiskArgs(cfg)
@@ -152,7 +161,27 @@ func buildSourceArgs(cfg *Config) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("resolve iso %q: %w", cfg.Source.Path, err)
 		}
-		return append(diskArgs, "--cdrom", iso), nil
+		args := diskArgs
+		if len(spec.KernelArgs) > 0 {
+			args = append(args, "--location", iso, "--extra-args", strings.Join(spec.KernelArgs, " "))
+		} else {
+			args = append(args, "--cdrom", iso)
+		}
+		if spec.Seed != nil {
+			seedPath, err := cfg.installerSeedPath()
+			if err != nil {
+				return nil, err
+			}
+			device := spec.SeedDevice
+			if device == "" {
+				device = "disk"
+			}
+			args = append(args,
+				"--disk", fmt.Sprintf("path=%s,format=raw,readonly=on,device=%s", seedPath, device),
+				"--sysinfo", "type=smbios,system.serial=ds=nocloud",
+			)
+		}
+		return args, nil
 
 	case sourceDisk:
 		format, err := cfg.sourceDiskFormat()
@@ -277,6 +306,9 @@ func RunVirtInstall(cfg *Config, libvirtURI string) error {
 		}
 	}
 	if _, err := prepareSeed(cfg); err != nil {
+		return err
+	}
+	if _, err := prepareInstallerSeed(cfg); err != nil {
 		return err
 	}
 

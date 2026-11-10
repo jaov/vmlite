@@ -177,6 +177,10 @@ func runUp(args []string) error {
 			return fmt.Errorf("VM %q was created but state could not be written: %w", cfg.Name, err)
 		}
 		fmt.Printf("VM %q created successfully via %s\n", cfg.Name, uri)
+		if cfg.hasInstaller() {
+			fmt.Printf("Installer %q started; after it reboots, run: vmlite provision %s\n", cfg.Source.Installer.Type, configPath)
+			return nil
+		}
 		if len(cfg.Provisioners) > 0 {
 			if err := provisionVM(cfg, st, layout, false, false); err != nil {
 				return fmt.Errorf("VM %q was created but provisioning failed: %w; run vmlite provision after fixing it", cfg.Name, err)
@@ -274,6 +278,12 @@ func runStatus(args []string) error {
 	}
 	if st.IP != "" {
 		fmt.Printf("IP:    %s\n", st.IP)
+	}
+	if st.InstallerType != "" {
+		fmt.Printf("Installer: %s\n", st.InstallerType)
+	}
+	if st.InstallPhase != "" {
+		fmt.Printf("Install:   %s\n", st.InstallPhase)
 	}
 	if len(st.Provisioned) > 0 {
 		fmt.Printf("Provisioned: %d script(s)\n", len(st.Provisioned))

@@ -273,6 +273,62 @@ func TestBootArgs(t *testing.T) {
 	}
 }
 
+func TestBuildVirtInstallArgsISOInstaller(t *testing.T) {
+	dir := t.TempDir()
+	iso := filepath.Join(dir, "ubuntu.iso")
+	cfg := baseTestConfig()
+	cfg.OSVariant = ""
+	cfg.Source = Source{
+		Type:      sourceISO,
+		Path:      iso,
+		Installer: &Installer{Type: "ubuntu_autoinstall"},
+	}
+	cfg.assetDir = t.TempDir()
+	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
+
+	got, err := buildVirtInstallArgs(&cfg, systemURI)
+	if err != nil {
+		t.Fatalf("buildVirtInstallArgs: %v", err)
+	}
+
+	seedPath := filepath.Join(cfg.assetDir, "demo-installer-seed.iso")
+	if !containsAll(got,
+		"--os-variant", "detect=on,require=off",
+		"--boot", "hd,cdrom",
+		"--check", "disk_size=off",
+		"--location", iso,
+		"--extra-args", "autoinstall",
+		"--disk", "path="+seedPath+",format=raw,readonly=on,device=disk",
+		"--sysinfo", "type=smbios,system.serial=ds=nocloud",
+	) {
+		t.Fatalf("args missing installer media: %q", got)
+	}
+	if containsAll(got, "--cdrom") {
+		t.Fatalf("installer with kernel args should use --location, not --cdrom: %q", got)
+	}
+}
+
+func TestBuildVirtInstallArgsISOInstallerUEFI(t *testing.T) {
+	cfg := baseTestConfig()
+	cfg.OSVariant = ""
+	cfg.Firmware = firmwareUEFI
+	cfg.Source = Source{
+		Type:      sourceISO,
+		Path:      "/tmp/ubuntu.iso",
+		Installer: &Installer{Type: "ubuntu_autoinstall"},
+	}
+	cfg.assetDir = t.TempDir()
+	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
+
+	got, err := buildVirtInstallArgs(&cfg, systemURI)
+	if err != nil {
+		t.Fatalf("buildVirtInstallArgs: %v", err)
+	}
+	if !containsAll(got, "--boot", "uefi,hd,cdrom") {
+		t.Fatalf("args missing uefi installer boot order: %q", got)
+	}
+}
+
 func TestBuildVirtInstallArgsGraphics(t *testing.T) {
 	cfg := baseTestConfig()
 	cfg.Graphics = Graphics{Type: graphicsVNC, Listen: "127.0.0.1"}

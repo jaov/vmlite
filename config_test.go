@@ -122,6 +122,11 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"provisioner without source", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell"}]}`, "exactly one of path or inline"},
 		{"provisioner bad run", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true", "run": "sometimes"}]}`, "run must be"},
 		{"provisioner user network", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "network": {"mode": "user"}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "guest-visible network"},
+		{"installer on cloud image", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x", "installer": {"type": "ubuntu_autoinstall"}}, "disk": {"size": 5}}`, "source.installer requires"},
+		{"unknown installer", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso", "installer": {"type": "nope"}}, "disk": {"size": 5}}`, "unsupported installer.type"},
+		{"installer config and inline", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso", "installer": {"type": "ubuntu_autoinstall", "config": "/tmp/a", "inline": "x"}}, "disk": {"size": 5}}`, "at most one"},
+		{"installer missing type", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso", "installer": {}}, "disk": {"size": 5}}`, "installer.type is required"},
+		{"manual iso provisioners", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "ssh/provisioners require"},
 	}
 
 	for _, tc := range tests {
@@ -135,6 +140,55 @@ func TestLoadConfigValidation(t *testing.T) {
 				t.Fatalf("error = %q, want it to contain %q", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestLoadConfigISOInstaller(t *testing.T) {
+	path := writeConfigFile(t, `{
+		"name": "auto",
+		"memory": 2048,
+		"cpus": 2,
+		"source": {
+			"type": "iso",
+			"path": "/tmp/ubuntu.iso",
+			"installer": {"type": "ubuntu_autoinstall", "inline": "#cloud-config\n"}
+		},
+		"disk": {"size": 10},
+		"ssh": {"user": "deploy"},
+		"provisioners": [{"type": "shell", "inline": "true"}]
+	}`)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if !cfg.hasInstaller() || cfg.Source.Installer.Type != "ubuntu_autoinstall" {
+		t.Fatalf("installer = %+v", cfg.Source.Installer)
+	}
+	if cfg.sshUser() != "deploy" {
+		t.Fatalf("ssh user = %q", cfg.sshUser())
+	}
+	if cfg.needsSeed() {
+		t.Fatal("ISO installer must not use the cloud-image seed path")
+	}
+}
+
+func TestInstallerAnswerFileRelative(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "autoinstall.yaml"), []byte("autoinstall:\n  version: 1\n"), 0o644); err != nil {
+		t.Fatalf("write answer file: %v", err)
+	}
+	cfg := &Config{
+		Name:      "auto",
+		Source:    Source{Type: sourceISO, Path: "/tmp/ubuntu.iso", Installer: &Installer{Type: "ubuntu_autoinstall", Config: "autoinstall.yaml"}},
+		configDir: dir,
+	}
+	got, err := cfg.installerAnswerFile()
+	if err != nil {
+		t.Fatalf("installerAnswerFile: %v", err)
+	}
+	if !strings.Contains(string(got), "version: 1") {
+		t.Fatalf("answer file = %q", got)
 	}
 }
 

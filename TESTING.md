@@ -178,6 +178,26 @@ network-installer boot medium is sufficient for this smoke test.
 | OpenBSD 7.9 | `install79.iso` | PASS |
 | NetBSD 10.0 | `boot.iso` | PASS |
 
+### Automated installer tests
+
+`TestUbuntuAutoinstall` performs a full unattended Ubuntu server install, boots
+the installed disk, waits for SSH, and runs a shell provisioner. It needs a
+Ubuntu live-server ISO and roughly 6 GiB free in `/tmp`:
+
+```bash
+curl -fL -o /tmp/ubuntu-24.04.3-live-server-amd64.iso \
+  https://releases.ubuntu.com/24.04/ubuntu-24.04.3-live-server-amd64.iso
+
+VMLITE_TEST_UBUNTU_AUTOINSTALL=1 \
+VMLITE_TEST_UBUNTU_ISO=/tmp/ubuntu-24.04.3-live-server-amd64.iso \
+  go test -tags integration -run TestUbuntuAutoinstall -v ./...
+```
+
+The test asserts that `up` starts the installer without provisioning, then
+`vmlite provision` ejects the installer media, boots the installed system,
+waits for SSH, writes a provisioner marker, and reports the installed phase.
+It takes roughly 5-15 minutes.
+
 FreeBSD notes:
 
 - The BASIC-CLOUDINIT image performs a first-boot `pkg upgrade` and reboots

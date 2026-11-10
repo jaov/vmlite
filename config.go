@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"vmlite/internal/installer"
 )
 
 const (
@@ -57,6 +60,8 @@ type Config struct {
 
 	sshPublicKey    string
 	sshKeyGenerated bool
+	configDir       string
+	assetDir        string
 }
 
 // SSHConfig controls the guest account used for shell provisioners.
@@ -85,18 +90,34 @@ func (c *Config) needsSSH() bool {
 }
 
 func (c *Config) needsSeed() bool {
-	return strings.TrimSpace(c.Source.CloudInit) != "" || c.needsSSH()
+	return c.Source.Type == sourceCloudImage && (strings.TrimSpace(c.Source.CloudInit) != "" || c.needsSSH())
+}
+
+func (c *Config) hasInstaller() bool {
+	return c.Source.Type == sourceISO && c.Source.Installer != nil
+}
+
+func (c *Config) canGenerateSSHKey() bool {
+	return c.Source.Type == sourceCloudImage || c.hasInstaller()
 }
 
 // Source selects what the VM boots from.
 type Source struct {
-	Type      string `json:"type"`
-	Path      string `json:"path,omitempty"`
-	URL       string `json:"url,omitempty"`
-	SHA256    string `json:"sha256,omitempty"`
-	Cache     string `json:"cache,omitempty"`
-	CloudInit string `json:"cloud_init,omitempty"`
-	ExtraArgs string `json:"extra_args,omitempty"`
+	Type      string     `json:"type"`
+	Path      string     `json:"path,omitempty"`
+	URL       string     `json:"url,omitempty"`
+	SHA256    string     `json:"sha256,omitempty"`
+	Cache     string     `json:"cache,omitempty"`
+	CloudInit string     `json:"cloud_init,omitempty"`
+	ExtraArgs string     `json:"extra_args,omitempty"`
+	Installer *Installer `json:"installer,omitempty"`
+}
+
+// Installer selects unattended installation for ISO sources.
+type Installer struct {
+	Type   string `json:"type"`
+	Config string `json:"config,omitempty"`
+	Inline string `json:"inline,omitempty"`
 }
 
 // Disk describes the VM's primary disk.
@@ -153,6 +174,9 @@ func LoadConfig(path string) (*Config, error) {
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config %q: %w", path, err)
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		cfg.configDir = filepath.Dir(abs)
 	}
 
 	return &cfg, nil
@@ -231,8 +255,16 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	if c.needsSSH() && c.Source.Type != sourceCloudImage {
-		return fmt.Errorf("ssh/provisioners require source.type %q", sourceCloudImage)
+	if c.needsSSH() {
+		switch c.Source.Type {
+		case sourceCloudImage:
+		case sourceISO:
+			if c.Source.Installer == nil {
+				return fmt.Errorf("ssh/provisioners require source.type %q or an ISO installer", sourceCloudImage)
+			}
+		default:
+			return fmt.Errorf("ssh/provisioners require source.type %q or an ISO installer", sourceCloudImage)
+		}
 	}
 	if len(c.Provisioners) > 0 {
 		if c.Network.Mode == networkModeUser {
@@ -280,6 +312,9 @@ func (c *Config) validateSource() error {
 		if src.Path != "" || src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" || src.SHA256 != "" || src.Cache != "" {
 			return fmt.Errorf("source.type %q does not accept path, url, cloud_init, extra_args, sha256, or cache", sourceNone)
 		}
+		if src.Installer != nil {
+			return fmt.Errorf("source.installer requires source.type %q", sourceISO)
+		}
 		if c.Disk.Size <= 0 {
 			return fmt.Errorf("disk.size must be greater than zero")
 		}
@@ -292,6 +327,9 @@ func (c *Config) validateSource() error {
 		}
 		if src.ExtraArgs != "" {
 			return fmt.Errorf("source.extra_args is not valid for source.type %q", sourceCloudImage)
+		}
+		if src.Installer != nil {
+			return fmt.Errorf("source.installer requires source.type %q", sourceISO)
 		}
 		if hasURL {
 			if !validSHA256(src.SHA256) {
@@ -314,6 +352,9 @@ func (c *Config) validateSource() error {
 		if src.Path != "" || src.CloudInit != "" || src.SHA256 != "" || src.Cache != "" {
 			return fmt.Errorf("source.path, source.cloud_init, source.sha256, and source.cache are not valid for source.type %q", sourceInstallTree)
 		}
+		if src.Installer != nil {
+			return fmt.Errorf("source.installer requires source.type %q", sourceISO)
+		}
 		if c.Disk.Size <= 0 {
 			return fmt.Errorf("disk.size must be greater than zero")
 		}
@@ -324,6 +365,9 @@ func (c *Config) validateSource() error {
 		}
 		if src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" || src.SHA256 != "" || src.Cache != "" {
 			return fmt.Errorf("source.url, source.cloud_init, source.extra_args, source.sha256, and source.cache are not valid for source.type %q", sourceISO)
+		}
+		if err := validateInstaller(src.Installer); err != nil {
+			return err
 		}
 		if c.Disk.Size <= 0 {
 			return fmt.Errorf("disk.size must be greater than zero")
@@ -336,6 +380,9 @@ func (c *Config) validateSource() error {
 		if src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" || src.SHA256 != "" || src.Cache != "" {
 			return fmt.Errorf("source.url, source.cloud_init, source.extra_args, source.sha256, and source.cache are not valid for source.type %q", sourceDisk)
 		}
+		if src.Installer != nil {
+			return fmt.Errorf("source.installer requires source.type %q", sourceISO)
+		}
 		if c.Disk.Path != "" {
 			return fmt.Errorf("disk.path is not used with source.type %q", sourceDisk)
 		}
@@ -343,6 +390,9 @@ func (c *Config) validateSource() error {
 	case sourcePXE:
 		if src.Path != "" || src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" || src.SHA256 != "" || src.Cache != "" {
 			return fmt.Errorf("source.type %q does not accept path, url, cloud_init, extra_args, sha256, or cache", sourcePXE)
+		}
+		if src.Installer != nil {
+			return fmt.Errorf("source.installer requires source.type %q", sourceISO)
 		}
 		if c.Disk.Size <= 0 {
 			return fmt.Errorf("disk.size must be greater than zero")
@@ -353,5 +403,23 @@ func (c *Config) validateSource() error {
 			sourceNone, sourceCloudImage, sourceInstallTree, sourceISO, sourceDisk, sourcePXE)
 	}
 
+	return nil
+}
+
+func validateInstaller(inst *Installer) error {
+	if inst == nil {
+		return nil
+	}
+	if strings.TrimSpace(inst.Type) == "" {
+		return fmt.Errorf("source.installer.type is required")
+	}
+	if _, err := installer.Lookup(inst.Type); err != nil {
+		return fmt.Errorf("source.installer: %w", err)
+	}
+	hasConfig := strings.TrimSpace(inst.Config) != ""
+	hasInline := inst.Inline != ""
+	if hasConfig && hasInline {
+		return fmt.Errorf("source.installer requires at most one of config or inline")
+	}
 	return nil
 }

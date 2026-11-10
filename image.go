@@ -196,9 +196,9 @@ func CheckImageTools(cfg *Config) error {
 		}
 	}
 
-	if cfg.needsSeed() {
+	if cfg.needsSeed() || cfg.hasInstaller() {
 		if _, err := seed.Builder(); err != nil {
-			return fmt.Errorf("cloud_init/provisioners: %w", err)
+			return fmt.Errorf("cloud_init/provisioners/installer: %w", err)
 		}
 	}
 

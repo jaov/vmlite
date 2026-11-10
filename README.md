@@ -63,10 +63,47 @@ a stopped VM is started, and config/connection drift requires `--recreate`.
   `vmlite provision`.
 - `vmlite provision vm.json` reruns pending/always scripts.
 - `vmlite provision --force vm.json` reruns once-provisioners too.
-- Shell provisioners require a Linux cloud image on `qemu:///system` with a
-  guest-visible network. `session`/user-mode networking is rejected.
+- Shell provisioners require a Linux cloud image or an automated ISO installer
+  on `qemu:///system` with a guest-visible network. `session`/user-mode
+  networking is rejected.
 - `vmlite status` reports the guest IP; services are reached at
   `guest-ip:5432`, `guest-ip:8080`, etc.
+
+### Automated ISO installers
+
+An ISO source can carry an unattended installer spec:
+
+```json
+{
+  "name": "ubuntu-auto",
+  "memory": 2048,
+  "cpus": 2,
+  "source": {
+    "type": "iso",
+    "path": "/var/tmp/ubuntu-24.04.3-live-server-amd64.iso",
+    "installer": { "type": "ubuntu_autoinstall" }
+  },
+  "disk": { "size": 8 },
+  "network": { "mode": "default" },
+  "graphics": { "type": "none" },
+  "provisioners": [
+    { "type": "shell", "inline": "apt-get update && apt-get install -y nginx" }
+  ]
+}
+```
+
+- `vmlite up` starts the installer and returns; it never provisions the
+  installer environment.
+- `vmlite provision` waits for the installer to finish, ejects its CD-ROM,
+  boots the installed disk, waits for SSH, then runs the shell provisioners.
+- `installer.config` may point at a custom answer file. Use
+  `{{VMLITE_HOSTNAME}}`, `{{VMLITE_SSH_USER}}`, and
+  `{{VMLITE_SSH_AUTHORIZED_KEY}}` placeholders to receive the generated key.
+- Without `installer.config`, vmlite generates a minimal answer file that
+  installs SSH, the configured user, and NOPASSWD sudo.
+- Automated installers require `qemu:///system` and guest-visible networking.
+- The installer boot order is `hd,cdrom`, so a reboot after installation boots
+  the disk instead of restarting the installer.
 
 A cloud-image example:
 
