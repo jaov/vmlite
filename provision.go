@@ -174,7 +174,7 @@ func (s *shellStep) Apply(ctx context.Context, r plan.Runner) error {
 	if err := s.runner.Run(ctx, plan.Command{
 		Name:  "bash",
 		Args:  []string{"-s"},
-		Sudo:  true,
+		Sudo:  s.runner.User != "root",
 		Stdin: bytes.NewReader(s.script),
 	}); err != nil {
 		return err

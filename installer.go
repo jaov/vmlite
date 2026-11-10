@@ -136,18 +136,22 @@ func prepareInstallerISO(cfg *Config, spec guestinstall.Spec) (string, error) {
 
 	args := []string{"-indev", source, "-outdev", tmpPath}
 	for _, f := range spec.InjectFiles {
-		if f.Name == "" || filepath.Base(f.Name) != f.Name {
-			return "", fmt.Errorf("injected installer file %q must be a plain filename", f.Name)
+		clean := filepath.Clean(f.Name)
+		if f.Name == "" || filepath.IsAbs(f.Name) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("injected installer file %q must be a relative path", f.Name)
 		}
 		mode := f.Mode
 		if mode == 0 {
 			mode = 0o644
 		}
-		filePath := filepath.Join(dir, f.Name)
+		filePath := filepath.Join(dir, clean)
+		if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+			return "", fmt.Errorf("create injected installer directory for %q: %w", f.Name, err)
+		}
 		if err := os.WriteFile(filePath, f.Data, mode); err != nil {
 			return "", fmt.Errorf("write injected installer file %q: %w", f.Name, err)
 		}
-		args = append(args, "-map", filePath, "/"+f.Name)
+		args = append(args, "-map", filePath, "/"+filepath.ToSlash(clean))
 	}
 	args = append(args, "-boot_image", "any", "replay")
 
