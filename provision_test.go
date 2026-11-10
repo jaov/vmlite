@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"vmlite/internal/plan"
 )
@@ -112,6 +113,28 @@ func TestClearInstallerBoot(t *testing.T) {
 	}
 	if !strings.Contains(xml, "<name>demo</name>") {
 		t.Errorf("defined XML lost the domain:\n%s", xml)
+	}
+}
+
+func TestWaitForIPv4PrefersARP(t *testing.T) {
+	binDir := t.TempDir()
+	script := "#!/bin/sh\n" +
+		"case \" $* \" in\n" +
+		"  *\" --source arp \"*) printf ' vnet0 52:54:00:00:00:01 ipv4 192.0.2.57/24\\n' ;;\n" +
+		"  *\" --source lease \"*) printf ' vnet0 52:54:00:00:00:01 ipv4 192.0.2.56/24\\n vnet0 52:54:00:00:00:01 ipv4 192.0.2.57/24\\n' ;;\n" +
+		"esac\n" +
+		"exit 0\n"
+	if err := os.WriteFile(filepath.Join(binDir, "virsh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake virsh: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	got, err := waitForIPv4(systemURI, "demo", 2*time.Second)
+	if err != nil {
+		t.Fatalf("waitForIPv4: %v", err)
+	}
+	if got != "192.0.2.57" {
+		t.Fatalf("IP = %q, want active ARP address", got)
 	}
 }
 

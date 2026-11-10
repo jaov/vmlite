@@ -29,7 +29,7 @@ func TestPackagesForDebian(t *testing.T) {
 
 func TestBinariesFor(t *testing.T) {
 	bins := BinariesFor()
-	for _, want := range []string{"qemu-img", "qemu-system-x86_64", "virsh", "virt-install", "xorrisofs", "ssh", "scp", "ssh-keygen"} {
+	for _, want := range []string{"qemu-img", "qemu-system-x86_64", "virsh", "virt-install", "xorriso", "xorrisofs", "ssh", "scp", "ssh-keygen"} {
 		found := false
 		for _, got := range bins {
 			if got == want {

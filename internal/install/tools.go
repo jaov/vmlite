@@ -41,7 +41,7 @@ var Catalog = []Tool{
 	},
 	{
 		Name:     "iso",
-		Binaries: []string{"xorrisofs"},
+		Binaries: []string{"xorriso", "xorrisofs"},
 		Packages: map[string][]string{
 			"debian": {"xorriso"},
 			"fedora": {"xorriso"},

@@ -120,6 +120,23 @@ automatically. The default kickstart installs the Fedora Server environment,
 creates the SSH user, installs the generated key with `sshkey`, enables sshd,
 and grants NOPASSWD sudo.
 
+Debian uses preseed:
+
+```json
+"source": {
+  "type": "iso",
+  "path": "/var/tmp/vmlite-cache/debian-13.7.0-amd64-netinst.iso",
+  "installer": { "type": "debian_preseed" }
+}
+```
+
+The netinst ISO is remastered with `/preseed.cfg`, and the installer boots with
+`preseed/file=/cdrom/preseed.cfg`. Remastering requires `xorriso` in addition
+to the ISO creation tools. Debian’s `pkgsel` installs `openssh-server` and
+`sudo` from the configured network mirror, so the installer guest needs
+outbound access to `deb.debian.org` (or a preseed pointing at a reachable
+mirror).
+
 A cloud-image example:
 
 ```json

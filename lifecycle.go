@@ -282,6 +282,9 @@ func runStatus(args []string) error {
 	if st.InstallerType != "" {
 		fmt.Printf("Installer: %s\n", st.InstallerType)
 	}
+	if st.InstallerISOPath != "" {
+		fmt.Printf("Installer ISO: %s\n", st.InstallerISOPath)
+	}
 	if st.InstallPhase != "" {
 		fmt.Printf("Install:   %s\n", st.InstallPhase)
 	}
@@ -359,6 +362,9 @@ func destroyState(st *State, layout projectLayout, force, dryRun bool) error {
 	}
 	if st.SeedPath != "" {
 		_ = os.Remove(st.SeedPath)
+	}
+	if st.InstallerISOPath != "" {
+		_ = os.Remove(st.InstallerISOPath)
 	}
 	if st.AssetDir != "" && withinDir(filepath.Dir(layout.StateFile), st.AssetDir) {
 		_ = os.RemoveAll(st.AssetDir)

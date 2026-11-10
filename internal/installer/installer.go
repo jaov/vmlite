@@ -15,6 +15,8 @@ const (
 	UbuntuAutoinstall = "ubuntu_autoinstall"
 	// FedoraKickstart is the Fedora Server kickstart installer.
 	FedoraKickstart = "fedora_kickstart"
+	// DebianPreseed is the Debian installer preseed provider.
+	DebianPreseed = "debian_preseed"
 )
 
 // Input is the host and account information an installer may inject.
@@ -32,6 +34,10 @@ type Spec struct {
 	SeedDevice string   // disk or cdrom
 	BootOrder  []string // final boot order, e.g. hd,cdrom
 	KernelArgs []string
+	// InjectFiles are added to a remastered copy of the installer ISO. This is
+	// used when an installer can only read its answer file from the install
+	// media itself.
+	InjectFiles []seed.File
 }
 
 // Installer turns host/account input into a Spec.
@@ -47,6 +53,8 @@ func Lookup(typ string) (Installer, error) {
 		return ubuntuAutoinstall{}, nil
 	case FedoraKickstart:
 		return fedoraKickstart{}, nil
+	case DebianPreseed:
+		return debianPreseed{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported installer.type %q", typ)
 	}

@@ -157,9 +157,15 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		iso, err := filepath.Abs(cfg.Source.Path)
+		if spec.Type != "" {
+			diskArgs, err = primaryDiskArgsBus(cfg, "virtio")
+			if err != nil {
+				return nil, err
+			}
+		}
+		iso, err := cfg.installerISOPath()
 		if err != nil {
-			return nil, fmt.Errorf("resolve iso %q: %w", cfg.Source.Path, err)
+			return nil, err
 		}
 		args := diskArgs
 		if len(spec.KernelArgs) > 0 {
@@ -176,8 +182,12 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 			if device == "" {
 				device = "disk"
 			}
+			diskSpec := fmt.Sprintf("path=%s,format=raw,readonly=on,device=%s", seedPath, device)
+			if device == "disk" {
+				diskSpec += ",bus=virtio"
+			}
 			args = append(args,
-				"--disk", fmt.Sprintf("path=%s,format=raw,readonly=on,device=%s", seedPath, device),
+				"--disk", diskSpec,
 				"--sysinfo", "type=smbios,system.serial=ds=nocloud",
 			)
 		}
@@ -219,6 +229,17 @@ func primaryDiskArgs(cfg *Config) ([]string, error) {
 		return []string{"--disk", fmt.Sprintf("path=%s,size=%d,format=%s", path, cfg.Disk.Size, cfg.newDiskFormat())}, nil
 	}
 	return []string{"--disk", fmt.Sprintf("size=%d", cfg.Disk.Size)}, nil
+}
+
+func primaryDiskArgsBus(cfg *Config, bus string) ([]string, error) {
+	args, err := primaryDiskArgs(cfg)
+	if err != nil || bus == "" {
+		return args, err
+	}
+	if len(args) == 2 && args[0] == "--disk" {
+		args[1] += ",bus=" + bus
+	}
+	return args, nil
 }
 
 // bootArgs composes firmware and boot order into one --boot argument. A boot
@@ -306,6 +327,13 @@ func RunVirtInstall(cfg *Config, libvirtURI string) error {
 		}
 	}
 	if _, err := prepareSeed(cfg); err != nil {
+		return err
+	}
+	spec, err := cfg.installerSpec()
+	if err != nil {
+		return err
+	}
+	if _, err := prepareInstallerISO(cfg, spec); err != nil {
 		return err
 	}
 	if _, err := prepareInstallerSeed(cfg); err != nil {

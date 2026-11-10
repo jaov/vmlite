@@ -159,6 +159,56 @@ func TestFedoraNoKeyDoesNotEnableSSH(t *testing.T) {
 	}
 }
 
+func TestDebianPreseedSpec(t *testing.T) {
+	impl, err := Lookup(DebianPreseed)
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+	spec, err := impl.Spec(Input{
+		Hostname: "debian-vm",
+		SSHUser:  "vmlite",
+		SSHKey:   "ssh-ed25519 AAAA test",
+	})
+	if err != nil {
+		t.Fatalf("Spec: %v", err)
+	}
+	if spec.Seed != nil {
+		t.Fatalf("Debian preseed should inject into the ISO, got seed %+v", spec.Seed)
+	}
+	if len(spec.InjectFiles) != 1 || spec.InjectFiles[0].Name != "preseed.cfg" {
+		t.Fatalf("injected files = %+v", spec.InjectFiles)
+	}
+	if got := strings.Join(spec.KernelArgs, " "); !strings.Contains(got, "auto=true") || !strings.Contains(got, "preseed/file=/cdrom/preseed.cfg") {
+		t.Fatalf("kernel args = %q", spec.KernelArgs)
+	}
+	preseed := string(spec.InjectFiles[0].Data)
+	for _, want := range []string{
+		"hostname string debian-vm", "username string vmlite", "passwd/user-password password",
+		"partman-auto/disk string /dev/vda", "pkgsel/include string openssh-server sudo",
+		"authorized_keys", "NOPASSWD:ALL", "PasswordAuthentication no",
+	} {
+		if !strings.Contains(preseed, want) {
+			t.Errorf("preseed missing %q:\n%s", want, preseed)
+		}
+	}
+}
+
+func TestDebianPreseedPlaceholders(t *testing.T) {
+	impl, _ := Lookup(DebianPreseed)
+	spec, err := impl.Spec(Input{
+		Hostname:   "demo",
+		SSHUser:    "deploy",
+		SSHKey:     "ssh-ed25519 KEY",
+		AnswerFile: []byte("host={{VMLITE_HOSTNAME}} user={{VMLITE_SSH_USER}} key={{VMLITE_SSH_AUTHORIZED_KEY}}\n"),
+	})
+	if err != nil {
+		t.Fatalf("Spec: %v", err)
+	}
+	if got := string(spec.InjectFiles[0].Data); got != "host=demo user=deploy key=ssh-ed25519 KEY\n" {
+		t.Fatalf("preseed = %q", got)
+	}
+}
+
 func TestUbuntuRejectsUnsafeUser(t *testing.T) {
 	impl, _ := Lookup(UbuntuAutoinstall)
 	_, err := impl.Spec(Input{Hostname: "demo", SSHUser: `bad"user`, SSHKey: "ssh-ed25519 AAAA"})

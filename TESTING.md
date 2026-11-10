@@ -209,6 +209,24 @@ VMLITE_TEST_FEDORA_ISO=/var/tmp/vmlite-cache/Fedora-Server-dvd-x86_64-42-1.1.iso
   go test -tags integration -run TestFedoraKickstart -v ./...
 ```
 
+`TestDebianPreseed` remasters a Debian netinst ISO with `/preseed.cfg` and
+verifies boot, SSH, and provisioning:
+
+```bash
+curl -fL -o /var/tmp/vmlite-cache/debian-13.7.0-amd64-netinst.iso \
+  https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.7.0-amd64-netinst.iso
+
+VMLITE_TEST_DEBIAN_AUTOINSTALL=1 \
+VMLITE_TEST_DEBIAN_ISO=/var/tmp/vmlite-cache/debian-13.7.0-amd64-netinst.iso \
+  go test -tags integration -run TestDebianPreseed -v ./...
+```
+
+Debian remastering needs `xorriso`. The Debian installer’s early preseed loader
+does not mount a second disk, so the preseed is added to the install media
+rather than attached as a separate seed. `pkgsel` needs guest access to
+`deb.debian.org` (or a preseeded mirror) to install `openssh-server` and
+`sudo`.
+
 FreeBSD notes:
 
 - The BASIC-CLOUDINIT image performs a first-boot `pkg upgrade` and reboots

@@ -68,6 +68,61 @@ func TestPrepareInstallerSeed(t *testing.T) {
 	}
 }
 
+func TestPrepareInstallerISO(t *testing.T) {
+	binDir := t.TempDir()
+	argsLog := filepath.Join(binDir, "xorriso.log")
+	script := "#!/bin/sh\n" +
+		"out=\"\"\n" +
+		"prev=\"\"\n" +
+		"for a in \"$@\"; do\n" +
+		"  printf '%s\\n' \"$a\" >> " + argsLog + "\n" +
+		"  if [ \"$prev\" = \"-outdev\" ]; then out=\"$a\"; fi\n" +
+		"  prev=\"$a\"\n" +
+		"done\n" +
+		": > \"$out\"\n" +
+		"exit 0\n"
+	if err := os.WriteFile(filepath.Join(binDir, "xorriso"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake xorriso: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	dir := t.TempDir()
+	source := filepath.Join(dir, "debian.iso")
+	if err := os.WriteFile(source, []byte("iso"), 0o644); err != nil {
+		t.Fatalf("write source ISO: %v", err)
+	}
+	cfg := &Config{
+		Name:         "debian",
+		Source:       Source{Type: sourceISO, Path: source, Installer: &Installer{Type: "debian_preseed"}},
+		assetDir:     t.TempDir(),
+		sshPublicKey: "ssh-ed25519 AAAA test",
+	}
+	spec, err := cfg.installerSpec()
+	if err != nil {
+		t.Fatalf("installerSpec: %v", err)
+	}
+	path, err := prepareInstallerISO(cfg, spec)
+	if err != nil {
+		t.Fatalf("prepareInstallerISO: %v", err)
+	}
+	if path != filepath.Join(cfg.assetDir, "debian-installer.iso") {
+		t.Fatalf("path = %q", path)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("remastered ISO missing: %v", err)
+	}
+	data, err := os.ReadFile(argsLog)
+	if err != nil {
+		t.Fatalf("read xorriso log: %v", err)
+	}
+	log := string(data)
+	for _, want := range []string{"-indev", source, "-outdev", ".installer-", "-boot_image", "any", "replay", "/preseed.cfg"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("xorriso log missing %q:\n%s", want, log)
+		}
+	}
+}
+
 func TestNewStateInstaller(t *testing.T) {
 	layout := projectLayout{
 		ConfigPath: "/tmp/vm.json",

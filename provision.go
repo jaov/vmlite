@@ -107,9 +107,12 @@ func waitForIPv4(uri, name string, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
 	var last string
 	for time.Now().Before(deadline) {
-		out, err := runVirsh(uri, "domifaddr", name, "--source", "lease")
-		last = out
-		if err == nil {
+		for _, source := range []string{"arp", "lease"} {
+			out, err := runVirsh(uri, "domifaddr", name, "--source", source)
+			last = out
+			if err != nil {
+				continue
+			}
 			for _, line := range strings.Split(out, "\n") {
 				fields := strings.Fields(line)
 				for i, field := range fields {
@@ -261,7 +264,7 @@ func finishInstaller(cfg *Config, st *State, layout projectLayout, dryRun bool) 
 			}
 			return markInstalled(st, layout)
 		}
-		if !strings.Contains(text, "running") {
+		if !strings.Contains(text, "running") && !strings.Contains(text, "in shutdown") {
 			return fmt.Errorf("installer VM %q is %q; expected running or shut off", st.Name, text)
 		}
 		time.Sleep(5 * time.Second)
@@ -368,7 +371,7 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 		return fmt.Errorf("VM %q is missing", st.Name)
 	} else if st.InstallerType == "" && !strings.Contains(text, "running") {
 		return fmt.Errorf("VM %q is not running", st.Name)
-	} else if st.InstallerType != "" && !strings.Contains(text, "running") && !strings.Contains(text, "shut off") {
+	} else if st.InstallerType != "" && !strings.Contains(text, "running") && !strings.Contains(text, "shut off") && !strings.Contains(text, "in shutdown") {
 		return fmt.Errorf("VM %q is %q; expected running or shut off", st.Name, strings.TrimSpace(text))
 	}
 

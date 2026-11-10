@@ -196,9 +196,25 @@ func CheckImageTools(cfg *Config) error {
 		}
 	}
 
-	if cfg.needsSeed() || cfg.hasInstaller() {
+	if cfg.needsSeed() {
 		if _, err := seed.Builder(); err != nil {
-			return fmt.Errorf("cloud_init/provisioners/installer: %w", err)
+			return fmt.Errorf("cloud_init/provisioners: %w", err)
+		}
+	}
+	if cfg.hasInstaller() {
+		spec, err := cfg.installerSpec()
+		if err != nil {
+			return err
+		}
+		if spec.Seed != nil {
+			if _, err := seed.Builder(); err != nil {
+				return fmt.Errorf("installer: %w", err)
+			}
+		}
+		if len(spec.InjectFiles) > 0 {
+			if _, err := exec.LookPath("xorriso"); err != nil {
+				return fmt.Errorf("installer ISO remastering requires xorriso in PATH: %w", err)
+			}
 		}
 	}
 

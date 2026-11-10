@@ -298,13 +298,44 @@ func TestBuildVirtInstallArgsISOInstaller(t *testing.T) {
 		"--check", "disk_size=off",
 		"--location", iso,
 		"--extra-args", "autoinstall",
-		"--disk", "path="+seedPath+",format=raw,readonly=on,device=disk",
+		"--disk", "path="+seedPath+",format=raw,readonly=on,device=disk,bus=virtio",
 		"--sysinfo", "type=smbios,system.serial=ds=nocloud",
 	) {
 		t.Fatalf("args missing installer media: %q", got)
 	}
 	if containsAll(got, "--cdrom") {
 		t.Fatalf("installer with kernel args should use --location, not --cdrom: %q", got)
+	}
+}
+
+func TestBuildVirtInstallArgsDebianPreseed(t *testing.T) {
+	iso := filepath.Join(t.TempDir(), "debian.iso")
+	cfg := baseTestConfig()
+	cfg.OSVariant = ""
+	cfg.Source = Source{
+		Type:      sourceISO,
+		Path:      iso,
+		Installer: &Installer{Type: "debian_preseed"},
+	}
+	cfg.assetDir = t.TempDir()
+	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
+
+	got, err := buildVirtInstallArgs(&cfg, systemURI)
+	if err != nil {
+		t.Fatalf("buildVirtInstallArgs: %v", err)
+	}
+	remastered := filepath.Join(cfg.assetDir, "demo-installer.iso")
+	if !containsAll(got,
+		"--boot", "hd,cdrom",
+		"--check", "disk_size=off",
+		"--disk", "size=5,bus=virtio",
+		"--location", remastered,
+		"--extra-args", "auto=true priority=critical preseed/file=/cdrom/preseed.cfg",
+	) {
+		t.Fatalf("args missing Debian installer media: %q", got)
+	}
+	if containsAll(got, "--disk", "path="+filepath.Join(cfg.assetDir, "demo-installer-seed.iso")) {
+		t.Fatalf("Debian preseed should be injected, not attached as a seed: %q", got)
 	}
 }
 
@@ -330,7 +361,7 @@ func TestBuildVirtInstallArgsFedoraKickstart(t *testing.T) {
 		"--boot", "hd,cdrom",
 		"--check", "disk_size=off",
 		"--cdrom", iso,
-		"--disk", "path="+seedPath+",format=raw,readonly=on,device=disk",
+		"--disk", "path="+seedPath+",format=raw,readonly=on,device=disk,bus=virtio",
 	) {
 		t.Fatalf("args missing Fedora installer media: %q", got)
 	}
