@@ -105,6 +105,21 @@ An ISO source can carry an unattended installer spec:
 - The installer boot order is `hd,cdrom`, so a reboot after installation boots
   the disk instead of restarting the installer.
 
+Fedora Server uses kickstart answer media:
+
+```json
+"source": {
+  "type": "iso",
+  "path": "/var/tmp/Fedora-Server-dvd-x86_64-42-1.1.iso",
+  "installer": { "type": "fedora_kickstart" }
+}
+```
+
+The generated `ks.cfg` is placed on an `OEMDRV` volume, which Anaconda detects
+automatically. The default kickstart installs the Fedora Server environment,
+creates the SSH user, installs the generated key with `sshkey`, enables sshd,
+and grants NOPASSWD sudo.
+
 A cloud-image example:
 
 ```json

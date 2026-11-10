@@ -13,6 +13,8 @@ import (
 const (
 	// UbuntuAutoinstall is the Ubuntu live-server autoinstall installer.
 	UbuntuAutoinstall = "ubuntu_autoinstall"
+	// FedoraKickstart is the Fedora Server kickstart installer.
+	FedoraKickstart = "fedora_kickstart"
 )
 
 // Input is the host and account information an installer may inject.
@@ -43,6 +45,8 @@ func Lookup(typ string) (Installer, error) {
 	switch typ {
 	case UbuntuAutoinstall:
 		return ubuntuAutoinstall{}, nil
+	case FedoraKickstart:
+		return fedoraKickstart{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported installer.type %q", typ)
 	}

@@ -198,6 +198,17 @@ The test asserts that `up` starts the installer without provisioning, then
 waits for SSH, writes a provisioner marker, and reports the installed phase.
 It takes roughly 5-15 minutes.
 
+`TestFedoraKickstart` does the same for Fedora Server:
+
+```bash
+curl -fL -o /var/tmp/vmlite-cache/Fedora-Server-dvd-x86_64-42-1.1.iso \
+  https://download.fedoraproject.org/pub/fedora/linux/releases/42/Server/x86_64/iso/Fedora-Server-dvd-x86_64-42-1.1.iso
+
+VMLITE_TEST_FEDORA_AUTOINSTALL=1 \
+VMLITE_TEST_FEDORA_ISO=/var/tmp/vmlite-cache/Fedora-Server-dvd-x86_64-42-1.1.iso \
+  go test -tags integration -run TestFedoraKickstart -v ./...
+```
+
 FreeBSD notes:
 
 - The BASIC-CLOUDINIT image performs a first-boot `pkg upgrade` and reboots

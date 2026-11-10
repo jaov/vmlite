@@ -308,6 +308,37 @@ func TestBuildVirtInstallArgsISOInstaller(t *testing.T) {
 	}
 }
 
+func TestBuildVirtInstallArgsFedoraKickstart(t *testing.T) {
+	dir := t.TempDir()
+	iso := filepath.Join(dir, "fedora.iso")
+	cfg := baseTestConfig()
+	cfg.OSVariant = ""
+	cfg.Source = Source{
+		Type:      sourceISO,
+		Path:      iso,
+		Installer: &Installer{Type: "fedora_kickstart"},
+	}
+	cfg.assetDir = t.TempDir()
+	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
+
+	got, err := buildVirtInstallArgs(&cfg, systemURI)
+	if err != nil {
+		t.Fatalf("buildVirtInstallArgs: %v", err)
+	}
+	seedPath := filepath.Join(cfg.assetDir, "demo-installer-seed.iso")
+	if !containsAll(got,
+		"--boot", "hd,cdrom",
+		"--check", "disk_size=off",
+		"--cdrom", iso,
+		"--disk", "path="+seedPath+",format=raw,readonly=on,device=disk",
+	) {
+		t.Fatalf("args missing Fedora installer media: %q", got)
+	}
+	if containsAll(got, "--location") {
+		t.Fatalf("Fedora kickstart should boot from --cdrom: %q", got)
+	}
+}
+
 func TestBuildVirtInstallArgsISOInstallerUEFI(t *testing.T) {
 	cfg := baseTestConfig()
 	cfg.OSVariant = ""
