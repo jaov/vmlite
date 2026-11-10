@@ -1,0 +1,256 @@
+# Configuration reference
+
+`vmlite` reads a JSON file, by default `vm.json`.
+
+## Minimal example
+
+```json
+{
+  "name": "dev",
+  "memory": 2048,
+  "cpus": 2,
+  "source": {
+    "type": "cloud_image",
+    "path": "/var/cache/vmlite/ubuntu-24.04.img"
+  },
+  "disk": { "size": 10 },
+  "network": { "mode": "auto" },
+  "graphics": { "type": "none" }
+}
+```
+
+## Top-level fields
+
+| Field | Type | Meaning |
+|---|---|---|
+| `name` | string | VM/domain name; required |
+| `memory` | int | memory in MiB |
+| `cpus` | int | vCPU count |
+| `os_variant` | string | libvirt/osinfo variant, e.g. `ubuntu24.04`, `win11` |
+| `firmware` | string | `bios` or `uefi` |
+| `secure_boot` | bool | requires `firmware: "uefi"` |
+| `tpm` | object | emulated TPM; requires UEFI |
+| `source` | object | boot/install source |
+| `disk` | object | primary disk |
+| `mounts` | array | host directories exposed to the guest |
+| `network` | object | network mode/model |
+| `graphics` | object | `none`, `vnc`, or `spice` |
+| `autoconsole` | bool | keep the virt-install console attached |
+| `extra_disks` | array | additional disks or CD-ROMs |
+| `ssh` | object | guest account and key for provisioners |
+| `provisioners` | array | post-boot scripts |
+
+### TPM
+
+```json
+"tpm": { "version": "2.0", "backend": "emulator" }
+```
+
+Supported values:
+
+- `version`: `1.2` or `2.0` (default `2.0`)
+- `backend`: `emulator`
+
+TPM and Secure Boot require `firmware: "uefi"`.
+
+## Source
+
+| Type | Required fields | Meaning |
+|---|---|---|
+| `none` | `disk.size` | blank VM with no OS install |
+| `cloud_image` | `path` or `url` + `sha256` | boot a cloud image with an overlay |
+| `install_tree` | `url` | virt-install location install |
+| `iso` | `path` | installer or live ISO |
+| `disk` | `path` | import an already-installed disk |
+| `pxe` | `disk.size` | network boot |
+
+Common fields:
+
+```json
+"source": {
+  "type": "iso",
+  "path": "/isos/ubuntu-24.04.iso",
+  "installer": { "type": "ubuntu_autoinstall" }
+}
+```
+
+### Cloud image URLs and cache
+
+```json
+"source": {
+  "type": "cloud_image",
+  "url": "https://cloud-images.ubuntu.com/minimal/releases/noble/release/ubuntu-24.04-minimal-cloudimg-amd64.img",
+  "sha256": "<64-character digest>",
+  "cache": "/var/tmp/vmlite-cache",
+  "cloud_init": "./cloud-init.yaml"
+}
+```
+
+- URL images require `sha256`.
+- Cached images are verified on every use.
+- Default cache is `~/.cache/vmlite`.
+- `vmlite up --offline` refuses to download a missing image.
+- `destroy` keeps the cache.
+
+## Disk
+
+```json
+"disk": {
+  "size": 20,
+  "path": "/var/tmp/vm.qcow2",
+  "format": "qcow2",
+  "bus": "virtio"
+}
+```
+
+| Field | Values |
+|---|---|
+| `size` | GiB; required for new disks |
+| `path` | optional explicit path |
+| `format` | `auto`, `qcow2`, `raw` |
+| `bus` | `auto`, `virtio`, `sata`, `scsi` |
+
+Use `sata` for Windows Setup unless virtio drivers are integrated into the
+answer media.
+
+## Extra disks
+
+```json
+"extra_disks": [
+  {
+    "path": "/isos/virtio-win.iso",
+    "device": "cdrom",
+    "format": "raw",
+    "readonly": true
+  }
+]
+```
+
+- `device`: `disk` or `cdrom`
+- `format`: `auto`, `qcow2`, `raw`
+- `readonly`: boolean
+
+## Mounts
+
+```json
+"mounts": [
+  { "source": "/var/tmp/shared", "target": "shared_data", "type": "9p" }
+]
+```
+
+- `type`: `9p` (default), `none`, or `virtiofs` (not implemented yet)
+- `source` must exist on the host
+- 9p requires guest kernel support
+
+## Network
+
+```json
+"network": { "mode": "default", "model": "virtio" }
+```
+
+| Mode | Meaning |
+|---|---|
+| `auto` | system default network, or user networking in session mode |
+| `default` | libvirt default NAT network |
+| `user` | QEMU user networking |
+| `bridge` | host bridge; requires `bridge` |
+
+Provisioners require a guest-visible network. Use system mode with `default` or
+a bridge, not `user`.
+
+## Graphics
+
+```json
+"graphics": { "type": "vnc", "listen": "127.0.0.1" }
+```
+
+- `none`
+- `vnc`
+- `spice`
+
+## SSH and provisioners
+
+```json
+"ssh": { "user": "vmlite", "key": "/home/me/.ssh/id_ed25519" },
+"provisioners": [
+  { "type": "shell", "path": "./provision/setup.sh", "run": "once" },
+  { "type": "shell", "inline": "echo hi >> /var/tmp/log", "run": "always" }
+]
+```
+
+- `ssh.key` is optional for cloud images and automated ISO installers; vmlite
+  generates a key when it can deliver it.
+- Manual ISO and prebuilt disk sources require `ssh.key`.
+- `ssh.user` defaults to `vmlite`, or `Administrator` for Windows.
+- `run`: `once` (default) or `always`.
+- `type`: `shell` (default) or `powershell`.
+
+`shell` uses `bash -s` with `sudo -n` for non-root users. `powershell` uses
+`powershell -NoProfile -NonInteractive -Command -` without sudo.
+
+## Installer
+
+```json
+"source": {
+  "type": "iso",
+  "path": "/isos/image.iso",
+  "installer": {
+    "type": "ubuntu_autoinstall",
+    "config": "./answer-file"
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `type` | installer provider |
+| `config` | answer file path, relative to the config file |
+| `inline` | answer file contents |
+| `windows` | generated Windows autounattend options |
+
+Installer types:
+
+| Type | Media |
+|---|---|
+| `ubuntu_autoinstall` | Ubuntu live-server ISO |
+| `fedora_kickstart` | Fedora Server ISO |
+| `debian_preseed` | Debian netinst ISO |
+| `windows_autounattend` | Windows Server/client ISO |
+
+See `docs/installers.md` for per-installer details.
+
+### Windows options
+
+```json
+"installer": {
+  "type": "windows_autounattend",
+  "windows": {
+    "locale": "en-US",
+    "input_locale": "0409:00000409",
+    "timezone": "UTC",
+    "image_index": 1,
+    "admin_password": "..."
+  }
+}
+```
+
+If `admin_password` is omitted, vmlite generates one and writes it to
+`.vmlite/<name>/windows-admin-password` with mode `0600`.
+
+## State
+
+Managed files live in `.vmlite/` next to the config, or under `--state-dir`:
+
+```text
+.vmlite/
+  <name>.json
+  <name>/
+    disk.qcow2
+    id_ed25519
+    id_ed25519.pub
+    *-seed.iso
+    *-installer.iso
+    windows-admin-password
+```
+
+`vmlite destroy` removes the managed assets; the image cache is kept.

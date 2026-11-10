@@ -3,6 +3,14 @@
 A small, dependency-free Go CLI that creates local KVM/QEMU guests through
 `virt-install` and `virsh`.
 
+vmlite is Vagrant-like without the Ruby dependency:
+
+- project-local `.vmlite/` state
+- reproducible cloud images and installer media
+- `up`, `provision`, `status`, `destroy`, `validate`
+- shell and PowerShell provisioners
+- automated Ubuntu, Fedora, Debian, and Windows installation paths
+
 ## Install on a Linux host
 
 vmlite runs on Linux hosts with KVM, libvirt, and virt-install. FreeBSD is
@@ -13,8 +21,9 @@ supported as a **guest**, not as a vmlite host.
 ./install.sh             # install dependencies and vmlite
 ```
 
-`install.sh` is now a small bootstrap: it builds a temporary vmlite binary and
-runs `vmlite install`, or uses a prebuilt `./vmlite` when Go is unavailable.
+`install.sh` is a bootstrap: it builds a temporary vmlite binary and runs
+`vmlite install`, or uses a prebuilt `./vmlite` when Go is unavailable.
+
 The Go installer handles Debian/Ubuntu, Fedora/RHEL-family, Arch, and openSUSE
 package managers, installs QEMU/libvirt/virt-install/ISO/SSH tools, checks
 `/dev/kvm`, starts the default libvirt network, and adds the invoking user to
@@ -24,274 +33,132 @@ Options are forwarded to the Go installer:
 
 ```bash
 vmlite install --dry-run
-vmlite install --binary ./vmlite               # prebuilt local binary
+vmlite install --binary ./vmlite
 vmlite install --binary-url URL --binary-sha256 SHA256
-vmlite install --no-deps                       # skip packages
+vmlite install --no-deps
 vmlite install --prefix /usr/bin
-vmlite doctor                                  # read-only readiness check
+vmlite doctor                  # read-only readiness check
 ```
 
-## Usage
+## Quick start
 
 ```bash
-vmlite up                 # uses ./vm.json; `vmlite` is an alias for up
+vmlite up                     # uses ./vm.json; `vmlite` is an alias for up
 vmlite up path/to/vm.json
-vmlite --connect qemu:///session vm.json
 vmlite status path/to/vm.json
-vmlite destroy --force path/to/vm.json
+vmlite status --json vm.json
+vmlite provision vm.json
+vmlite destroy --force vm.json
 ```
 
-Lifecycle state and generated VM assets live in `.vmlite/` next to the
-configuration file. `up` is idempotent: an unchanged running VM is a no-op,
-a stopped VM is started, and config/connection drift requires `--recreate`.
-`destroy` refuses to remove a running VM unless `--force` is passed.
-
-### Shell provisioners
-
-```json
-"ssh": { "user": "vmlite" },
-"provisioners": [
-  { "type": "shell", "path": "./provision/postgres-tomcat.sh", "run": "once" },
-  { "type": "shell", "inline": "echo refreshed >> /var/tmp/provisioned", "run": "always" }
-]
-```
-
-- `type: "shell"` runs `bash -s` with `sudo -n` for non-root users.
-- `type: "powershell"` runs `powershell -NoProfile -NonInteractive -Command -`
-  as the SSH user without sudo, for Windows guests:
-
-```json
-"provisioners": [
-  { "type": "powershell", "inline": "Set-Content C:\\vmlite-ok.txt 'ready'" }
-]
-```
-
-- `up` generates an ed25519 key under `.vmlite/`, injects the public key through
-  a NoCloud `vendor-data` cloud-config, waits for the NAT guest IP and SSH, then
-  runs the provisioners as root.
-- `run: "once"` skips unchanged scripts; `run: "always"` reruns on every
-  `vmlite provision`.
-- `vmlite provision vm.json` reruns pending/always scripts.
-- `vmlite provision --force vm.json` reruns once-provisioners too.
-- Shell provisioners require a Linux cloud image, an automated ISO installer,
-  a manual ISO with `ssh.key`, or a prebuilt disk with `ssh.key`, on
-  `qemu:///system` with a guest-visible network. `session`/user-mode
-  networking is rejected.
-- Manual ISO installs and prebuilt disks require a user-provided `ssh.key`;
-  vmlite does not generate a key that the guest cannot receive. `up` starts a
-  manual ISO and never provisions it. After installing the OS and authorizing
-  the key, run `vmlite provision`. Disk sources auto-provision on `up` because
-  the OS is already installed.
-- `vmlite status` reports the guest IP; services are reached at
-  `guest-ip:5432`, `guest-ip:8080`, etc.
-
-### Automated ISO installers
-
-An ISO source can carry an unattended installer spec:
+A cloud-image configuration:
 
 ```json
 {
-  "name": "ubuntu-auto",
-  "memory": 2048,
-  "cpus": 2,
-  "source": {
-    "type": "iso",
-    "path": "/var/tmp/ubuntu-24.04.3-live-server-amd64.iso",
-    "installer": { "type": "ubuntu_autoinstall" }
-  },
-  "disk": { "size": 8 },
-  "network": { "mode": "default" },
-  "graphics": { "type": "none" },
-  "provisioners": [
-    { "type": "shell", "inline": "apt-get update && apt-get install -y nginx" }
-  ]
-}
-```
-
-- `vmlite up` starts the installer and returns; it never provisions the
-  installer environment.
-- `vmlite provision` waits for the installer to finish, ejects its CD-ROM,
-  boots the installed disk, waits for SSH, then runs the shell provisioners.
-- `installer.config` may point at a custom answer file. Use
-  `{{VMLITE_HOSTNAME}}`, `{{VMLITE_SSH_USER}}`, and
-  `{{VMLITE_SSH_AUTHORIZED_KEY}}` placeholders to receive the generated key.
-- Without `installer.config`, vmlite generates a minimal answer file that
-  installs SSH, the configured user, and NOPASSWD sudo.
-- Automated installers require `qemu:///system` and guest-visible networking.
-- The installer boot order is `hd,cdrom`, so a reboot after installation boots
-  the disk instead of restarting the installer.
-
-Fedora Server uses kickstart answer media:
-
-```json
-"source": {
-  "type": "iso",
-  "path": "/var/tmp/Fedora-Server-dvd-x86_64-42-1.1.iso",
-  "installer": { "type": "fedora_kickstart" }
-}
-```
-
-The generated `ks.cfg` is placed on an `OEMDRV` volume, which Anaconda detects
-automatically. The default kickstart installs the Fedora Server environment,
-creates the SSH user, installs the generated key with `sshkey`, enables sshd,
-and grants NOPASSWD sudo.
-
-### Windows guests
-
-> **Status:** The Windows install and WinPE paths are implemented and covered
-> by unit tests, but have **not been exercised end to end on this host**. A
-> practical Windows guest needs a 30–64 GiB disk, while this development host
-> has only a few GiB free on `/` and `/tmp`. The Windows integration tests are
-> opt-in and skip when media or space is unavailable.
-
-Windows uses an `autounattend.xml` answer file attached as a CD-ROM. vmlite can
-generate a default for Windows Server evaluation media:
-
-```json
-{
-  "name": "win-server",
-  "memory": 4096,
-  "cpus": 2,
-  "os_variant": "win2022",
-  "firmware": "uefi",
-  "source": {
-    "type": "iso",
-    "path": "/isos/windows-server.iso",
-    "installer": {
-      "type": "windows_autounattend",
-      "windows": {
-        "locale": "en-US",
-        "timezone": "UTC",
-        "image_index": 1
-      }
-    }
-  },
-  "disk": { "size": 64, "format": "qcow2", "bus": "sata" },
-  "provisioners": [
-    { "type": "powershell", "inline": "Set-Content C:\\vmlite-ok.txt 'ready'" }
-  ]
-}
-```
-
-- The default template generates the disk layout, Administrator account,
-  OpenSSH Server setup, SSH key ACLs, and firewall rule.
-- `image_index` defaults to `1`; set it to the Windows image you want.
-- `ssh.user` defaults to `Administrator` for `windows_autounattend`.
-- If `windows.admin_password` is omitted, vmlite generates a random password
-  and writes it to `.vmlite/<name>/windows-admin-password` with mode `0600`.
-  `vmlite up` and `vmlite status` print the path.
-- Windows Setup can require Secure Boot and TPM 2.0 for Windows 11:
-  `secure_boot: true` and `tpm: { "version": "2.0" }`.
-- Install completion is SSH-based: `vmlite provision` waits for the installed
-  Windows guest to expose SSH instead of waiting for the installer domain to
-  shut off.
-- `disk.bus: "sata"` avoids virtio driver injection during Setup. Use `virtio`
-  only when `virtio-win` drivers are integrated into the media.
-- Windows guest disks are large; a practical test needs 30–64 GiB.
-- The generated default targets Windows Server evaluation media. It installs
-  OpenSSH with `Add-WindowsCapability`, which needs the capability payload or
-  Windows Update. For offline or client media, supply a custom answer file.
-- The generated Administrator password is present in the seed ISO and in the
-  host-side password file; treat both as sensitive local VM state.
-
-For other Windows editions or custom OpenSSH setup, provide your own answer
-file. It supports the placeholders:
-
-- `{{VMLITE_HOSTNAME}}`
-- `{{VMLITE_SSH_USER}}`
-- `{{VMLITE_SSH_AUTHORIZED_KEY}}`
-
-```json
-"installer": {
-  "type": "windows_autounattend",
-  "config": "./autounattend.xml"
-}
-```
-
-### Windows PE boot tests
-
-Windows client ISOs are too large for the default CI disk budget, so the first
-Windows target is a small WinPE image built from the Windows ADK:
-
-```powershell
-# On an elevated Windows machine with the ADK + WinPE add-on:
-.\scripts\build-winpe.ps1 -Output .\artifacts\winpe-vmlite.iso
-```
-
-The custom `scripts/winpe/startnet.cmd` initializes WinPE, formats the second
-disk, writes `vmlite-winpe-ok.txt`, and powers the VM off. The Linux test then
-verifies the marker:
-
-```bash
-VMLITE_TEST_WINPE=1 \
-VMLITE_TEST_WINPE_ISO=/artifacts/winpe-vmlite.iso \
-  go test -tags integration -run TestWindowsPEBoot -v ./...
-```
-
-This validates Windows boot, CD-ROM attachment, and the same plan/step command
-primitives used elsewhere. It does not exercise Windows Setup or SSH
-provisioning; those need a full Windows evaluation ISO and a larger disk,
-for example 30–64 GiB.
-
-Debian uses preseed:
-
-```json
-"source": {
-  "type": "iso",
-  "path": "/var/tmp/vmlite-cache/debian-13.7.0-amd64-netinst.iso",
-  "installer": { "type": "debian_preseed" }
-}
-```
-
-The netinst ISO is remastered with `/preseed.cfg`, and the installer boots with
-`preseed/file=/cdrom/preseed.cfg`. Remastering requires `xorriso` in addition
-to the ISO creation tools. Debian’s `pkgsel` installs `openssh-server` and
-`sudo` from the configured network mirror, so the installer guest needs
-outbound access to `deb.debian.org` (or a preseed pointing at a reachable
-mirror).
-
-A cloud-image example:
-
-```json
-{
-  "name": "dev-vm",
+  "name": "dev",
   "memory": 2048,
   "cpus": 2,
   "os_variant": "ubuntu24.04",
   "firmware": "bios",
   "source": {
     "type": "cloud_image",
-    "path": "/var/cache/vmlite/ubuntu.qcow2",
-    "cloud_init": "/var/tmp/user-data"
+    "path": "/var/cache/vmlite/ubuntu-24.04.img"
   },
   "disk": { "size": 10, "format": "qcow2" },
-  "mounts": [
-    { "source": "/var/tmp/shared", "target": "shared_data", "type": "9p" }
-  ],
   "network": { "mode": "auto" },
   "graphics": { "type": "none" }
 }
 ```
 
-Sources include `none`, `cloud_image`, `install_tree`, `iso`, `disk`, and
-`pxe`. See `TESTING.md` for the full configuration and distro support matrix.
+State and generated assets live in `.vmlite/` next to the config, or under
+`--state-dir`. `up` is idempotent: an unchanged running VM is a no-op, a
+stopped VM is started, and config/connection drift requires `--recreate`.
+`destroy` refuses to remove a running VM unless `--force` is passed.
 
-For reproducible cloud images, use `source.url` with a required `source.sha256`
-instead of `source.path`:
+Validate before creating anything:
 
-```json
-"source": {
-  "type": "cloud_image",
-  "url": "https://cloud-images.ubuntu.com/minimal/releases/noble/release/ubuntu-24.04-minimal-cloudimg-amd64.img",
-  "sha256": "<64-character digest>",
-  "cache": "/var/tmp/vmlite-cache",
-  "cloud_init": "./cloud-init.yaml"
-}
+```bash
+vmlite validate vm.json
+# vm.json: valid
 ```
 
-Images are cached under `~/.cache/vmlite` by default or `source.cache`. Every
-use verifies the checksum. `vmlite up --offline` refuses to download a missing
-image. `destroy` keeps the image cache so recreating is fast and reproducible.
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `up` | create or start the VM (default command) |
+| `provision` | run or rerun provisioners; finish automated installers |
+| `status` | show VM, IP, installer, and provisioner state |
+| `destroy` | remove the VM and managed files |
+| `validate` | validate config and local paths without changes |
+| `install` | install host dependencies and vmlite |
+| `doctor` | check host readiness |
+
+See [docs/cli.md](docs/cli.md) for flags, examples, JSON output, and exit
+codes.
+
+## Provisioning
+
+```json
+"ssh": { "user": "vmlite" },
+"provisioners": [
+  { "type": "shell", "path": "./provision/postgres.sh", "run": "once" },
+  { "type": "shell", "inline": "echo refreshed >> /var/tmp/log", "run": "always" },
+  { "type": "powershell", "inline": "Set-Content C:\\vmlite-ok.txt 'ready'" }
+]
+```
+
+- `shell` runs `bash -s` with `sudo -n` for non-root users.
+- `powershell` runs `powershell -NoProfile -NonInteractive -Command -` without
+  sudo.
+- `once` records the script SHA-256 and skips unchanged scripts.
+- `always` reruns on every `vmlite provision`.
+- `--force` reruns once-provisioners.
+- `--timeout 45m` overrides guest readiness waits.
+
+## Sources and installers
+
+| Source | Use |
+|---|---|
+| `cloud_image` | Ubuntu, Debian, Fedora, Arch, FreeBSD cloud images |
+| `iso` | manual or automated installers |
+| `disk` | imported/prebuilt installed disk |
+| `install_tree` | virt-install location install |
+| `pxe` | network boot |
+| `none` | blank VM |
+
+Automated ISO installers:
+
+| Installer | Media |
+|---|---|
+| `ubuntu_autoinstall` | Ubuntu live-server ISO |
+| `fedora_kickstart` | Fedora Server ISO |
+| `debian_preseed` | Debian netinst ISO |
+| `windows_autounattend` | Windows Server/client ISO |
+
+Manual ISO and prebuilt disk sources are provisionable with a user-provided
+`ssh.key`. This covers Arch, FreeBSD, OpenBSD, NetBSD, and other guests today.
+
+See:
+
+- [docs/configuration.md](docs/configuration.md) — full JSON field reference
+- [docs/installers.md](docs/installers.md) — per-installer details and limitations
+
+## Windows status
+
+The Windows autounattend and WinPE paths are implemented and unit-tested, but
+have **not** been exercised end to end on this host. A practical Windows guest
+needs a 30–64 GiB disk, which this development environment does not have. The
+Windows integration tests are opt-in and skip when media or space is
+unavailable.
+
+## Documentation
+
+- [CLI reference](docs/cli.md)
+- [Configuration reference](docs/configuration.md)
+- [Installers and guest sources](docs/installers.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Testing guide](TESTING.md)
 
 ## Test
 
@@ -300,5 +167,5 @@ go test ./...
 go test -tags integration -v ./...
 ```
 
-Boot profiles, installer-ISO checks, and the self-hosted nested test are gated
-by environment variables documented in `TESTING.md`.
+Boot profiles, installer tests, and the self-hosted nested test are gated by
+environment variables documented in [TESTING.md](TESTING.md).
