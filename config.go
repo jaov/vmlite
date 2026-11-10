@@ -59,6 +59,8 @@ type Source struct {
 	Type      string `json:"type"`
 	Path      string `json:"path,omitempty"`
 	URL       string `json:"url,omitempty"`
+	SHA256    string `json:"sha256,omitempty"`
+	Cache     string `json:"cache,omitempty"`
 	CloudInit string `json:"cloud_init,omitempty"`
 	ExtraArgs string `json:"extra_args,omitempty"`
 }
@@ -198,23 +200,48 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+func validSHA256(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, r := range s {
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func (c *Config) validateSource() error {
 	src := c.Source
 	switch src.Type {
 	case sourceNone:
-		if src.Path != "" || src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" {
-			return fmt.Errorf("source.type %q does not accept path, url, cloud_init, or extra_args", sourceNone)
+		if src.Path != "" || src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" || src.SHA256 != "" || src.Cache != "" {
+			return fmt.Errorf("source.type %q does not accept path, url, cloud_init, extra_args, sha256, or cache", sourceNone)
 		}
 		if c.Disk.Size <= 0 {
 			return fmt.Errorf("disk.size must be greater than zero")
 		}
 
 	case sourceCloudImage:
-		if strings.TrimSpace(src.Path) == "" {
-			return fmt.Errorf("source.path is required for source.type %q", sourceCloudImage)
+		hasPath := strings.TrimSpace(src.Path) != ""
+		hasURL := strings.TrimSpace(src.URL) != ""
+		if hasPath == hasURL {
+			return fmt.Errorf("source.type %q requires exactly one of source.path or source.url", sourceCloudImage)
 		}
-		if src.URL != "" || src.ExtraArgs != "" {
-			return fmt.Errorf("source.url and source.extra_args are not valid for source.type %q", sourceCloudImage)
+		if src.ExtraArgs != "" {
+			return fmt.Errorf("source.extra_args is not valid for source.type %q", sourceCloudImage)
+		}
+		if hasURL {
+			if !validSHA256(src.SHA256) {
+				return fmt.Errorf("source.sha256 must be a 64-character hex digest for URL images")
+			}
+		} else if src.SHA256 != "" && !validSHA256(src.SHA256) {
+			return fmt.Errorf("source.sha256 must be a 64-character hex digest")
+		}
+		if src.Cache != "" && !hasURL {
+			return fmt.Errorf("source.cache requires source.url")
 		}
 		if c.Disk.Size <= 0 {
 			return fmt.Errorf("disk.size must be greater than zero")
@@ -224,8 +251,8 @@ func (c *Config) validateSource() error {
 		if strings.TrimSpace(src.URL) == "" {
 			return fmt.Errorf("source.url is required for source.type %q", sourceInstallTree)
 		}
-		if src.Path != "" || src.CloudInit != "" {
-			return fmt.Errorf("source.path and source.cloud_init are not valid for source.type %q", sourceInstallTree)
+		if src.Path != "" || src.CloudInit != "" || src.SHA256 != "" || src.Cache != "" {
+			return fmt.Errorf("source.path, source.cloud_init, source.sha256, and source.cache are not valid for source.type %q", sourceInstallTree)
 		}
 		if c.Disk.Size <= 0 {
 			return fmt.Errorf("disk.size must be greater than zero")
@@ -235,8 +262,8 @@ func (c *Config) validateSource() error {
 		if strings.TrimSpace(src.Path) == "" {
 			return fmt.Errorf("source.path is required for source.type %q", sourceISO)
 		}
-		if src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" {
-			return fmt.Errorf("source.url, source.cloud_init, and source.extra_args are not valid for source.type %q", sourceISO)
+		if src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" || src.SHA256 != "" || src.Cache != "" {
+			return fmt.Errorf("source.url, source.cloud_init, source.extra_args, source.sha256, and source.cache are not valid for source.type %q", sourceISO)
 		}
 		if c.Disk.Size <= 0 {
 			return fmt.Errorf("disk.size must be greater than zero")
@@ -246,16 +273,16 @@ func (c *Config) validateSource() error {
 		if strings.TrimSpace(src.Path) == "" {
 			return fmt.Errorf("source.path is required for source.type %q", sourceDisk)
 		}
-		if src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" {
-			return fmt.Errorf("source.url, source.cloud_init, and source.extra_args are not valid for source.type %q", sourceDisk)
+		if src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" || src.SHA256 != "" || src.Cache != "" {
+			return fmt.Errorf("source.url, source.cloud_init, source.extra_args, source.sha256, and source.cache are not valid for source.type %q", sourceDisk)
 		}
 		if c.Disk.Path != "" {
 			return fmt.Errorf("disk.path is not used with source.type %q", sourceDisk)
 		}
 
 	case sourcePXE:
-		if src.Path != "" || src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" {
-			return fmt.Errorf("source.type %q does not accept path, url, cloud_init, or extra_args", sourcePXE)
+		if src.Path != "" || src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" || src.SHA256 != "" || src.Cache != "" {
+			return fmt.Errorf("source.type %q does not accept path, url, cloud_init, extra_args, sha256, or cache", sourcePXE)
 		}
 		if c.Disk.Size <= 0 {
 			return fmt.Errorf("disk.size must be greater than zero")

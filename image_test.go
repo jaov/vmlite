@@ -1,7 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -77,6 +81,117 @@ func TestSeedPath(t *testing.T) {
 	want := "/tmp/images/demo-seed.iso"
 	if got != want {
 		t.Fatalf("seedPath = %q, want %q", got, want)
+	}
+}
+
+func shaHex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func TestResolveImageLocal(t *testing.T) {
+	data := []byte("local-image")
+	dir := t.TempDir()
+	image := filepath.Join(dir, "image.qcow2")
+	if err := os.WriteFile(image, data, 0o644); err != nil {
+		t.Fatalf("write image: %v", err)
+	}
+
+	cfg := &Config{Source: Source{Type: sourceCloudImage, Path: image, SHA256: shaHex(data)}}
+	got, err := resolveImage(cfg, false, false)
+	if err != nil {
+		t.Fatalf("resolveImage: %v", err)
+	}
+	if got != image {
+		t.Fatalf("path = %q, want %q", got, image)
+	}
+
+	cfg.Source.SHA256 = strings.Repeat("0", 64)
+	if _, err := resolveImage(cfg, false, false); err == nil || !strings.Contains(err.Error(), "sha256 mismatch") {
+		t.Fatalf("mismatch error = %v", err)
+	}
+}
+
+func TestResolveImageURL(t *testing.T) {
+	data := []byte("remote-image")
+	sha := shaHex(data)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	cache := t.TempDir()
+	cfg := &Config{Source: Source{
+		Type:   sourceCloudImage,
+		URL:    server.URL + "/ubuntu.qcow2",
+		SHA256: sha,
+		Cache:  cache,
+	}}
+
+	got, err := resolveImage(cfg, false, false)
+	if err != nil {
+		t.Fatalf("resolveImage: %v", err)
+	}
+	content, err := os.ReadFile(got)
+	if err != nil || string(content) != string(data) {
+		t.Fatalf("cached image = %q, err %v", content, err)
+	}
+	if filepath.Dir(got) != cache {
+		t.Fatalf("cache path = %q, want dir %q", got, cache)
+	}
+
+	// Cached image must work without the server.
+	server.Close()
+	if _, err := resolveImage(cfg, false, false); err != nil {
+		t.Fatalf("cached resolveImage: %v", err)
+	}
+	if _, err := resolveImage(cfg, true, false); err != nil {
+		t.Fatalf("offline cached resolveImage: %v", err)
+	}
+}
+
+func TestResolveImageOfflineMissing(t *testing.T) {
+	cfg := &Config{Source: Source{
+		Type:   sourceCloudImage,
+		URL:    "https://example.invalid/image.qcow2",
+		SHA256: strings.Repeat("a", 64),
+		Cache:  t.TempDir(),
+	}}
+	_, err := resolveImage(cfg, true, false)
+	if err == nil || !strings.Contains(err.Error(), "offline") {
+		t.Fatalf("error = %v, want offline error", err)
+	}
+}
+
+func TestResolveImageDryRunMissing(t *testing.T) {
+	cfg := &Config{Source: Source{
+		Type:   sourceCloudImage,
+		URL:    "https://example.invalid/image.qcow2",
+		SHA256: strings.Repeat("a", 64),
+		Cache:  t.TempDir(),
+	}}
+	_, err := resolveImage(cfg, false, true)
+	if err != errImageWouldDownload {
+		t.Fatalf("error = %v, want errImageWouldDownload", err)
+	}
+}
+
+func TestResolveImageChecksumMismatch(t *testing.T) {
+	data := []byte("wrong")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	cfg := &Config{Source: Source{
+		Type:   sourceCloudImage,
+		URL:    server.URL + "/image.qcow2",
+		SHA256: strings.Repeat("0", 64),
+		Cache:  t.TempDir(),
+	}}
+	_, err := resolveImage(cfg, false, false)
+	if err == nil || !strings.Contains(err.Error(), "sha256 mismatch") {
+		t.Fatalf("error = %v, want checksum mismatch", err)
 	}
 }
 

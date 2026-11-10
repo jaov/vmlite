@@ -54,18 +54,19 @@ func resolveConnection(flagURI string) (string, error) {
 	return RunPreflightChecks()
 }
 
-func upFlagSet() (*flag.FlagSet, *string, *string, *bool, *bool) {
+func upFlagSet() (*flag.FlagSet, *string, *string, *bool, *bool, *bool) {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	connect := fs.String("connect", "", "libvirt connection URI")
 	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
 	recreate := fs.Bool("recreate", false, "destroy and recreate the VM")
 	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
-	return fs, connect, stateDir, recreate, dryRun
+	offline := fs.Bool("offline", false, "do not download missing images")
+	return fs, connect, stateDir, recreate, dryRun, offline
 }
 
 func runUp(args []string) error {
-	fs, connect, stateDir, recreate, dryRun := upFlagSet()
+	fs, connect, stateDir, recreate, dryRun, offline := upFlagSet()
 	if err := fs.Parse(args); err != nil {
 		return errUsage
 	}
@@ -95,6 +96,18 @@ func runUp(args []string) error {
 	configHash, err := hashConfig(cfg)
 	if err != nil {
 		return err
+	}
+
+	resolvedImage, err := resolveImage(cfg, *offline, *dryRun)
+	if errors.Is(err, errImageWouldDownload) {
+		fmt.Printf("Would download image %s into the cache\n", cfg.Source.URL)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if cfg.Source.Type == sourceCloudImage {
+		cfg.Source.Path = resolvedImage
 	}
 
 	uri, err := resolveConnection(*connect)

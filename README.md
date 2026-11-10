@@ -67,6 +67,23 @@ A cloud-image example:
 Sources include `none`, `cloud_image`, `install_tree`, `iso`, `disk`, and
 `pxe`. See `TESTING.md` for the full configuration and distro support matrix.
 
+For reproducible cloud images, use `source.url` with a required `source.sha256`
+instead of `source.path`:
+
+```json
+"source": {
+  "type": "cloud_image",
+  "url": "https://cloud-images.ubuntu.com/minimal/releases/noble/release/ubuntu-24.04-minimal-cloudimg-amd64.img",
+  "sha256": "<64-character digest>",
+  "cache": "/var/tmp/vmlite-cache",
+  "cloud_init": "./cloud-init.yaml"
+}
+```
+
+Images are cached under `~/.cache/vmlite` by default or `source.cache`. Every
+use verifies the checksum. `vmlite up --offline` refuses to download a missing
+image. `destroy` keeps the image cache so recreating is fast and reproducible.
+
 ## Test
 
 ```bash

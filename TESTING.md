@@ -272,6 +272,21 @@ In system mode, the base image must be readable and the overlay writable by the
 qemu user (`libvirt-qemu`). Session mode avoids those permissions issues; use
 `--connect qemu:///session` when needed.
 
+## Lifecycle tests
+
+The unit suite covers state serialization, config hashing, project paths,
+defaults, and status/destroy without state. Integration coverage includes:
+
+- `TestUpIdempotent` — a second `up` is a no-op.
+- `TestNameCollisionWithoutState` — an existing domain cannot be adopted.
+- `TestConfigDrift` — drift is refused and `--recreate` rebuilds.
+- `TestLifecycleStatusDestroy` — status, `--force` safety, state cleanup, and
+  exit code 3 after destroy.
+- `TestImageChecksumMismatch` / `TestOfflineMissingImage` — failures happen
+  before libvirt work.
+- `TestUpURLImage` — download, checksum, state, domain creation, and cache
+  retention through destroy.
+
 ## Self-hosted nested test
 
 `TestVmliteInGuest` creates an Ubuntu builder VM, runs `install.sh` inside it,

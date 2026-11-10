@@ -1,13 +1,160 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+var errImageWouldDownload = errors.New("image would be downloaded")
+
+// resolveImage returns a local, verified cloud-image path. URL images are
+// downloaded into the cache and checked against source.sha256.
+func resolveImage(cfg *Config, offline, dryRun bool) (string, error) {
+	if cfg.Source.Type != sourceCloudImage {
+		return "", nil
+	}
+
+	if strings.TrimSpace(cfg.Source.Path) != "" {
+		path, err := filepath.Abs(cfg.Source.Path)
+		if err != nil {
+			return "", fmt.Errorf("resolve image %q: %w", cfg.Source.Path, err)
+		}
+		if _, err := os.Stat(path); err != nil {
+			return "", fmt.Errorf("image %q is not accessible: %w", cfg.Source.Path, err)
+		}
+		if cfg.Source.SHA256 != "" {
+			if err := verifySHA256(path, cfg.Source.SHA256); err != nil {
+				return "", fmt.Errorf("image %q: %w", cfg.Source.Path, err)
+			}
+		}
+		return path, nil
+	}
+
+	if !validSHA256(cfg.Source.SHA256) {
+		return "", fmt.Errorf("source.sha256 is required for URL images")
+	}
+	sha := strings.ToLower(cfg.Source.SHA256)
+
+	cacheDir := cfg.Source.Cache
+	if strings.TrimSpace(cacheDir) == "" {
+		userCache, err := os.UserCacheDir()
+		if err != nil {
+			return "", fmt.Errorf("locate image cache: %w", err)
+		}
+		cacheDir = filepath.Join(userCache, "vmlite")
+	}
+	cacheDir, err := filepath.Abs(cacheDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve image cache %q: %w", cacheDir, err)
+	}
+
+	parsed, err := url.Parse(cfg.Source.URL)
+	if err != nil {
+		return "", fmt.Errorf("parse image URL %q: %w", cfg.Source.URL, err)
+	}
+	base := filepath.Base(parsed.Path)
+	if base == "" || base == "." || base == string(filepath.Separator) {
+		base = "image.qcow2"
+	}
+	cachePath := filepath.Join(cacheDir, sha[:16]+"-"+base)
+
+	if _, err := os.Stat(cachePath); err == nil {
+		if err := verifySHA256(cachePath, sha); err == nil {
+			return cachePath, nil
+		}
+		if offline {
+			return "", fmt.Errorf("cached image %q does not match source.sha256 and --offline is set", cachePath)
+		}
+		if err := os.Remove(cachePath); err != nil {
+			return "", fmt.Errorf("remove mismatched cached image %q: %w", cachePath, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("check cached image %q: %w", cachePath, err)
+	}
+
+	if offline {
+		return "", fmt.Errorf("image is not cached at %q and --offline is set", cachePath)
+	}
+	if dryRun {
+		return "", errImageWouldDownload
+	}
+	if err := downloadImage(cfg.Source.URL, cachePath, sha); err != nil {
+		return "", err
+	}
+	return cachePath, nil
+}
+
+func verifySHA256(path, want string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	if !strings.EqualFold(got, want) {
+		return fmt.Errorf("sha256 mismatch: got %s, want %s", got, want)
+	}
+	return nil
+}
+
+func downloadImage(rawURL, path, wantSHA string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create image cache: %w", err)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Minute}
+	resp, err := client.Get(rawURL)
+	if err != nil {
+		return fmt.Errorf("download image %q: %w", rawURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download image %q: unexpected HTTP status %s", rawURL, resp.Status)
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".download-*")
+	if err != nil {
+		return fmt.Errorf("create download temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(tmp, h), resp.Body); err != nil {
+		tmp.Close()
+		return fmt.Errorf("download image %q: %w", rawURL, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close downloaded image: %w", err)
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	if !strings.EqualFold(got, wantSHA) {
+		return fmt.Errorf("image %q sha256 mismatch: got %s, want %s", rawURL, got, wantSHA)
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		return fmt.Errorf("chmod downloaded image: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("install downloaded image %q: %w", path, err)
+	}
+	return nil
+}
 
 // detectImageFormat asks qemu-img for a disk image's format.
 func detectImageFormat(path string) (string, error) {

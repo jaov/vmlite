@@ -147,6 +147,9 @@ func newState(cfg *Config, layout projectLayout, uri, configHash, uuid string) (
 		}
 		st.ImagePath = image
 	}
+	if cfg.Source.SHA256 != "" {
+		st.ImageSHA256 = strings.ToLower(cfg.Source.SHA256)
+	}
 	if strings.TrimSpace(cfg.Disk.Path) != "" {
 		disk, err := filepath.Abs(cfg.Disk.Path)
 		if err != nil {

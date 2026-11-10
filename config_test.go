@@ -94,8 +94,11 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"missing source", `{"name": "vm", "memory": 1024, "cpus": 1, "disk": {"size": 5}}`, "source.type must be"},
 		{"invalid source", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "bogus"}, "disk": {"size": 5}}`, "source.type must be"},
 		{"none with path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "none", "path": "/tmp/x"}, "disk": {"size": 5}}`, "does not accept path"},
-		{"cloud image no path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image"}, "disk": {"size": 5}}`, "source.path is required"},
-		{"cloud image url", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x", "url": "https://example.invalid"}, "disk": {"size": 5}}`, "not valid"},
+		{"cloud image no path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image"}, "disk": {"size": 5}}`, "requires exactly one"},
+		{"cloud image both", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x", "url": "https://example.invalid/x.qcow2"}, "disk": {"size": 5}}`, "requires exactly one"},
+		{"cloud image url no sha", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "url": "https://example.invalid/x.qcow2"}, "disk": {"size": 5}}`, "sha256"},
+		{"cloud image bad sha", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "url": "https://example.invalid/x.qcow2", "sha256": "nope"}, "disk": {"size": 5}}`, "sha256"},
+		{"cloud image cache no url", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x", "cache": "/tmp/cache"}, "disk": {"size": 5}}`, "cache requires"},
 		{"cloud image no disk size", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 0}}`, "disk.size"},
 		{"install tree no url", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "install_tree"}, "disk": {"size": 5}}`, "source.url is required"},
 		{"install tree cloud init", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "install_tree", "url": "https://example.invalid", "cloud_init": "/tmp/u"}, "disk": {"size": 5}}`, "not valid"},
@@ -140,6 +143,30 @@ func TestSampleConfig(t *testing.T) {
 	}
 	if cfg.Disk.Size <= 0 {
 		t.Fatalf("sample disk.size = %d", cfg.Disk.Size)
+	}
+}
+
+func TestLoadConfigURLImage(t *testing.T) {
+	sha := strings.Repeat("a", 64)
+	path := writeConfigFile(t, `{
+		"name": "url-vm",
+		"memory": 1024,
+		"cpus": 1,
+		"source": {
+			"type": "cloud_image",
+			"url": "https://example.invalid/ubuntu.qcow2",
+			"sha256": "`+sha+`",
+			"cache": "/tmp/vmlite-cache"
+		},
+		"disk": {"size": 5}
+	}`)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Source.URL == "" || cfg.Source.SHA256 != sha || cfg.Source.Cache != "/tmp/vmlite-cache" {
+		t.Fatalf("source = %+v", cfg.Source)
 	}
 }
 

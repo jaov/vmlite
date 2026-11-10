@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -485,6 +487,145 @@ func TestLifecycleStatusDestroy(t *testing.T) {
 	exitErr, ok := err.(*exec.ExitError)
 	if !ok || exitErr.ExitCode() != 3 {
 		t.Fatalf("status exit = %v, want exit code 3", err)
+	}
+}
+
+func TestImageChecksumMismatch(t *testing.T) {
+	data := []byte("not-a-real-image")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	name := uniqueName()
+	cfg := Config{
+		Name:      name,
+		Memory:    256,
+		CPUs:      1,
+		OSVariant: "debian12",
+		Source: Source{
+			Type:   sourceCloudImage,
+			URL:    server.URL + "/image.qcow2",
+			SHA256: strings.Repeat("0", 64),
+			Cache:  t.TempDir(),
+		},
+		Disk:     Disk{Size: 1},
+		Network:  Network{Mode: networkModeAuto},
+		Graphics: Graphics{Type: graphicsNone},
+	}
+	path := writeConfig(t, cfg)
+
+	out, err := runVmlite(t, testURI, path)
+	if err == nil {
+		t.Fatalf("up succeeded with a bad checksum:\n%s", out)
+	}
+	if !strings.Contains(out, "sha256 mismatch") {
+		t.Fatalf("unexpected checksum error:\n%s", out)
+	}
+	stateFile := filepath.Join(filepath.Dir(path), ".vmlite", name+".json")
+	if _, err := os.Stat(stateFile); !os.IsNotExist(err) {
+		t.Fatalf("state was written after checksum failure: %v", err)
+	}
+}
+
+func TestOfflineMissingImage(t *testing.T) {
+	name := uniqueName()
+	cfg := Config{
+		Name:      name,
+		Memory:    256,
+		CPUs:      1,
+		OSVariant: "debian12",
+		Source: Source{
+			Type:   sourceCloudImage,
+			URL:    "https://example.invalid/image.qcow2",
+			SHA256: strings.Repeat("a", 64),
+			Cache:  t.TempDir(),
+		},
+		Disk:     Disk{Size: 1},
+		Network:  Network{Mode: networkModeAuto},
+		Graphics: Graphics{Type: graphicsNone},
+	}
+	path := writeConfig(t, cfg)
+
+	out, err := runVmliteArgs(t, []string{"--connect", testURI, "--offline", path}, nil)
+	if err == nil {
+		t.Fatalf("up --offline succeeded for a missing image:\n%s", out)
+	}
+	if !strings.Contains(out, "offline") {
+		t.Fatalf("unexpected offline error:\n%s", out)
+	}
+}
+
+func TestUpURLImage(t *testing.T) {
+	requireIntegration(t)
+	if err := ValidateConnection(sessionURI); err != nil {
+		t.Skipf("session libvirt unavailable: %v", err)
+	}
+
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.qcow2")
+	create := exec.Command("qemu-img", "create", "-f", "qcow2", base, "1G")
+	if out, err := create.CombinedOutput(); err != nil {
+		t.Fatalf("create base image: %v: %s", err, out)
+	}
+	data, err := os.ReadFile(base)
+	if err != nil {
+		t.Fatalf("read base image: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	name := uniqueName()
+	registerCleanup(t, sessionURI, name)
+	cache := filepath.Join(dir, "cache")
+	cfg := Config{
+		Name:      name,
+		Memory:    256,
+		CPUs:      1,
+		OSVariant: "debian12",
+		Source: Source{
+			Type:   sourceCloudImage,
+			URL:    server.URL + "/base.qcow2",
+			SHA256: shaHex(data),
+			Cache:  cache,
+		},
+		Disk:     Disk{Size: 2},
+		Network:  Network{Mode: networkModeUser},
+		Graphics: Graphics{Type: graphicsNone},
+	}
+	path := writeConfig(t, cfg)
+
+	out, err := runVmlite(t, sessionURI, path)
+	if err != nil {
+		t.Fatalf("up URL image failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "created successfully") {
+		t.Fatalf("unexpected up output:\n%s", out)
+	}
+
+	stateFile := filepath.Join(filepath.Dir(path), ".vmlite", name+".json")
+	st, err := loadState(stateFile)
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if st == nil || st.ImageSHA256 != shaHex(data) {
+		t.Fatalf("state image checksum = %+v", st)
+	}
+	if st.ImagePath == "" {
+		t.Fatal("state has no resolved image path")
+	}
+	if _, err := virsh(t, sessionURI, "dominfo", name); err != nil {
+		t.Fatalf("domain missing after URL up: %v", err)
+	}
+
+	out, err = runVmliteArgs(t, []string{"destroy", "--force", path}, nil)
+	if err != nil {
+		t.Fatalf("destroy URL VM: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(st.ImagePath); err != nil {
+		t.Fatalf("image cache was removed by destroy: %v", err)
 	}
 }
 
