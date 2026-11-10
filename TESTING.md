@@ -229,6 +229,11 @@ rather than attached as a separate seed. `pkgsel` needs guest access to
 
 ### Windows autounattend test
 
+> **Not run in this environment.** The Windows boot/install tests need a
+> Windows ISO and a 30–64 GiB guest disk. This host does not have enough free
+> space, so the tests remain opt-in and skip when `VMLITE_TEST_WORKDIR` lacks
+> about 40 GiB. WinPE also requires a separately built ADK ISO.
+
 A full Windows test needs a Windows ISO and a large work filesystem. By
 default the test uses the generated Windows Server autounattend; pass
 `VMLITE_TEST_WINDOWS_UNATTEND` to use a custom file instead:

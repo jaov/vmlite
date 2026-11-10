@@ -138,6 +138,12 @@ and grants NOPASSWD sudo.
 
 ### Windows guests
 
+> **Status:** The Windows install and WinPE paths are implemented and covered
+> by unit tests, but have **not been exercised end to end on this host**. A
+> practical Windows guest needs a 30–64 GiB disk, while this development host
+> has only a few GiB free on `/` and `/tmp`. The Windows integration tests are
+> opt-in and skip when media or space is unavailable.
+
 Windows uses an `autounattend.xml` answer file attached as a CD-ROM. vmlite can
 generate a default for Windows Server evaluation media:
 
