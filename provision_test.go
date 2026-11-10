@@ -198,6 +198,27 @@ func TestFinishInstallerSSHCompletionSkipsShutdown(t *testing.T) {
 	}
 }
 
+func TestProvisionTimeouts(t *testing.T) {
+	cases := []struct {
+		name     string
+		st       *State
+		override time.Duration
+		wantIP   time.Duration
+		wantSSH  time.Duration
+	}{
+		{"default", &State{}, 0, 5 * time.Minute, 5 * time.Minute},
+		{"installer", &State{InstallerType: "ubuntu_autoinstall"}, 0, 5 * time.Minute, 10 * time.Minute},
+		{"ssh installer", &State{InstallerType: "windows_autounattend", InstallerCompletion: "ssh"}, 0, 30 * time.Minute, 30 * time.Minute},
+		{"override", &State{InstallerType: "windows_autounattend", InstallerCompletion: "ssh"}, 45 * time.Minute, 45 * time.Minute, 45 * time.Minute},
+	}
+	for _, tc := range cases {
+		gotIP, gotSSH := provisionTimeouts(tc.st, tc.override)
+		if gotIP != tc.wantIP || gotSSH != tc.wantSSH {
+			t.Errorf("%s: timeouts = %s/%s, want %s/%s", tc.name, gotIP, gotSSH, tc.wantIP, tc.wantSSH)
+		}
+	}
+}
+
 func TestPowerShellStep(t *testing.T) {
 	binDir := t.TempDir()
 	logPath := filepath.Join(binDir, "ssh.log")

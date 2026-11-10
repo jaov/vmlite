@@ -368,7 +368,24 @@ func clearInstallerBoot(uri, name string) error {
 	return nil
 }
 
-func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun bool) error {
+func provisionTimeouts(st *State, override time.Duration) (time.Duration, time.Duration) {
+	ipTimeout := 5 * time.Minute
+	sshTimeout := 5 * time.Minute
+	if st.InstallerType != "" {
+		sshTimeout = 10 * time.Minute
+	}
+	if st.InstallerCompletion == string(guestinstall.CompletionSSH) {
+		ipTimeout = 30 * time.Minute
+		sshTimeout = 30 * time.Minute
+	}
+	if override > 0 {
+		ipTimeout = override
+		sshTimeout = override
+	}
+	return ipTimeout, sshTimeout
+}
+
+func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun bool, timeout time.Duration) error {
 	if len(cfg.Provisioners) == 0 && st.InstallerType == "" {
 		return nil
 	}
@@ -410,10 +427,7 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 			ip = "<guest-ip>"
 		}
 	} else {
-		ipTimeout := 5 * time.Minute
-		if completionSSH {
-			ipTimeout = 30 * time.Minute
-		}
+		ipTimeout, _ := provisionTimeouts(st, timeout)
 		var err error
 		ip, err = waitForIPv4(st.LibvirtURI, st.Name, ipTimeout)
 		if err != nil {
@@ -427,14 +441,8 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 
 	runner := guestSSHRunner(cfg, st, ip, dryRun)
 	if !dryRun {
-		timeout := 5 * time.Minute
-		if st.InstallerType != "" {
-			timeout = 10 * time.Minute
-		}
-		if completionSSH {
-			timeout = 30 * time.Minute
-		}
-		if err := waitForSSH(context.Background(), runner, timeout); err != nil {
+		_, sshTimeout := provisionTimeouts(st, timeout)
+		if err := waitForSSH(context.Background(), runner, sshTimeout); err != nil {
 			return err
 		}
 		if completionSSH && st.InstallPhase != installPhaseInstalled {
@@ -498,9 +506,13 @@ func runProvision(args []string) error {
 	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
 	force := fs.Bool("force", false, "rerun once-provisioners")
 	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
+	timeout := fs.Duration("timeout", 0, "maximum wait for guest readiness (default: 5m, or 30m for SSH-completing installers)")
 	configPath, err := parseConfigArgs(fs, args)
 	if err != nil {
 		return err
+	}
+	if *timeout < 0 {
+		return fmt.Errorf("timeout must not be negative")
 	}
 
 	cfg, err := LoadConfig(configPath)
@@ -518,5 +530,5 @@ func runProvision(args []string) error {
 	if st == nil {
 		return fmt.Errorf("no state for %q at %s", cfg.Name, layout.StateFile)
 	}
-	return provisionVM(cfg, st, layout, *force, *dryRun)
+	return provisionVM(cfg, st, layout, *force, *dryRun, *timeout)
 }

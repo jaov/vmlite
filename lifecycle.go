@@ -193,7 +193,7 @@ func runUp(args []string) error {
 		if len(cfg.Provisioners) > 0 {
 			switch cfg.Source.Type {
 			case sourceCloudImage, sourceDisk:
-				if err := provisionVM(cfg, st, layout, false, false); err != nil {
+				if err := provisionVM(cfg, st, layout, false, false, 0); err != nil {
 					return fmt.Errorf("VM %q was created but provisioning failed: %w; run vmlite provision after fixing it", cfg.Name, err)
 				}
 			case sourceISO:
