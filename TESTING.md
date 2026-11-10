@@ -272,6 +272,33 @@ In system mode, the base image must be readable and the overlay writable by the
 qemu user (`libvirt-qemu`). Session mode avoids those permissions issues; use
 `--connect qemu:///session` when needed.
 
+## Self-hosted nested test
+
+`TestVmliteInGuest` creates an Ubuntu builder VM, runs `install.sh` inside it,
+verifies nested KVM, installs the static vmlite binary, and creates a tiny
+nested VM with `source.type: none` over `qemu:///session`.
+
+```bash
+VMLITE_TEST_SELFHOST=1 \
+VMLITE_TEST_SELFHOST_IMAGE="$HOME/.cache/vmlite/ubuntu-24.04-minimal-cloudimg-amd64.img" \
+  go test -tags integration -run TestVmliteInGuest -v ./...
+```
+
+Requirements:
+
+- Nested virtualization enabled on the host (`nested=Y`) and a
+  `host-passthrough` builder CPU.
+- 4 GiB free in `/tmp` plus roughly 4 GiB of guest RAM.
+- A qemu-readable Ubuntu cloud image. The test stages it into tmpfs; no host
+  disk staging is used.
+- `install.sh` installs `qemu-system-x86`, libvirt, `virtinst`, and ISO tools in
+  the guest, then installs the static binary. The nested VM uses
+  `qemu:///session`, so no nested system libvirt network is required.
+
+The installer's distro branches are also covered by unit tests through
+`VMLITE_OS_RELEASE` dry runs for Ubuntu/Debian, Fedora/RHEL, Arch, openSUSE,
+and the FreeBSD host rejection.
+
 ## Inspecting leftovers
 
 Cleanup normally leaves nothing behind. To check:

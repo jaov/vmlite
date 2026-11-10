@@ -70,11 +70,15 @@ die() {
 	exit 1
 }
 
-if [ ! -r /etc/os-release ]; then
-	die "cannot detect the Linux distribution (/etc/os-release is missing)"
+OS_RELEASE_FILE="/etc/os-release"
+if [ "$DRY_RUN" -eq 1 ] && [ -n "${VMLITE_OS_RELEASE:-}" ]; then
+	OS_RELEASE_FILE="$VMLITE_OS_RELEASE"
+fi
+if [ ! -r "$OS_RELEASE_FILE" ]; then
+	die "cannot detect the Linux distribution ($OS_RELEASE_FILE is missing)"
 fi
 # shellcheck disable=SC1091
-. /etc/os-release
+. "$OS_RELEASE_FILE"
 
 DISTRO_ID="${ID:-unknown}"
 DISTRO_LIKE="${ID_LIKE:-}"
