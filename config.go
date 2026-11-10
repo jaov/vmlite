@@ -71,6 +71,7 @@ type Config struct {
 
 	sshPublicKey    string
 	sshKeyGenerated bool
+	windowsPassword string
 	configDir       string
 	assetDir        string
 }
@@ -135,9 +136,19 @@ type Source struct {
 
 // Installer selects unattended installation for ISO sources.
 type Installer struct {
-	Type   string `json:"type"`
-	Config string `json:"config,omitempty"`
-	Inline string `json:"inline,omitempty"`
+	Type    string            `json:"type"`
+	Config  string            `json:"config,omitempty"`
+	Inline  string            `json:"inline,omitempty"`
+	Windows *WindowsInstaller `json:"windows,omitempty"`
+}
+
+// WindowsInstaller supplies options for a generated autounattend.xml.
+type WindowsInstaller struct {
+	Locale        string `json:"locale,omitempty"`
+	InputLocale   string `json:"input_locale,omitempty"`
+	Timezone      string `json:"timezone,omitempty"`
+	ImageIndex    int    `json:"image_index,omitempty"`
+	AdminPassword string `json:"admin_password,omitempty"`
 }
 
 // Disk describes the VM's primary disk.
@@ -343,6 +354,9 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("ssh/provisioners are not supported for source.type %q", c.Source.Type)
 		}
 	}
+	if c.Source.Installer != nil && c.Source.Installer.Type == installer.WindowsAutoUnattend && !c.needsSSH() {
+		return fmt.Errorf("installer.type %q requires ssh.key or a provisioner", installer.WindowsAutoUnattend)
+	}
 	if len(c.Provisioners) > 0 {
 		if c.Network.Mode == networkModeUser {
 			return fmt.Errorf("provisioners require a guest-visible network; network.mode %q is not supported", networkModeUser)
@@ -490,18 +504,23 @@ func validateInstaller(inst *Installer) error {
 	if strings.TrimSpace(inst.Type) == "" {
 		return fmt.Errorf("source.installer.type is required")
 	}
-	if _, err := installer.Lookup(inst.Type); err != nil {
+	impl, err := installer.Lookup(inst.Type)
+	if err != nil {
 		return fmt.Errorf("source.installer: %w", err)
+	}
+	if inst.Windows != nil && inst.Type != installer.WindowsAutoUnattend {
+		return fmt.Errorf("source.installer.windows is only valid for installer.type %q", installer.WindowsAutoUnattend)
+	}
+	if inst.Windows != nil && inst.Windows.ImageIndex < 0 {
+		return fmt.Errorf("source.installer.windows.image_index must be greater than zero")
 	}
 	hasConfig := strings.TrimSpace(inst.Config) != ""
 	hasInline := inst.Inline != ""
 	if hasConfig && hasInline {
 		return fmt.Errorf("source.installer requires at most one of config or inline")
 	}
-	if impl, err := installer.Lookup(inst.Type); err == nil {
-		if req, ok := impl.(installer.AnswerFileRequirement); ok && req.RequiresAnswerFile() && !hasConfig && !hasInline {
-			return fmt.Errorf("source.installer.type %q requires config or inline", inst.Type)
-		}
+	if req, ok := impl.(installer.AnswerFileRequirement); ok && req.RequiresAnswerFile() && !hasConfig && !hasInline {
+		return fmt.Errorf("source.installer.type %q requires config or inline", inst.Type)
 	}
 	return nil
 }

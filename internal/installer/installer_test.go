@@ -1,6 +1,8 @@
 package installer
 
 import (
+	"encoding/xml"
+	"io"
 	"strings"
 	"testing"
 )
@@ -249,11 +251,74 @@ func TestWindowsSpec(t *testing.T) {
 	}
 }
 
-func TestWindowsRequiresAnswerFile(t *testing.T) {
+func TestWindowsGeneratesDefault(t *testing.T) {
 	impl, _ := Lookup(WindowsAutoUnattend)
-	_, err := impl.Spec(Input{Hostname: "win", SSHUser: "Administrator", SSHKey: "ssh-ed25519 AAAA"})
-	if err == nil || !strings.Contains(err.Error(), "requires installer.config") {
-		t.Fatalf("error = %v", err)
+	spec, err := impl.Spec(Input{
+		Hostname: "win-vm",
+		SSHUser:  "Administrator",
+		SSHKey:   "ssh-ed25519 AAAA&test",
+		Windows: &WindowsOptions{
+			AdminPassword: "A!9secret",
+			ImageIndex:    2,
+			Firmware:      "uefi",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Spec: %v", err)
+	}
+	answer := string(spec.Seed.Files[0].Data)
+	for _, want := range []string{
+		"<ComputerName>win-vm</ComputerName>",
+		"<Value>2</Value>",
+		"<AdministratorPassword>",
+		"<PlainText>true</PlainText>",
+		"Add-WindowsCapability",
+		"OpenSSH.Server~~~~0.0.1.0",
+		"administrators_authorized_keys",
+		"ssh-ed25519 AAAA&amp;test",
+		"<Type>EFI</Type>",
+		"<PartitionID>3</PartitionID>",
+	} {
+		if !strings.Contains(answer, want) {
+			t.Errorf("generated autounattend missing %q:\n%s", want, answer)
+		}
+	}
+	dec := xml.NewDecoder(strings.NewReader(answer))
+	for {
+		if _, err := dec.Token(); err == io.EOF {
+			break
+		} else if err != nil {
+			t.Fatalf("generated autounattend is not well-formed XML: %v", err)
+		}
+	}
+
+	bios, err := impl.Spec(Input{
+		Hostname: "win-vm",
+		SSHUser:  "Administrator",
+		SSHKey:   "ssh-ed25519 AAAA",
+		Windows:  &WindowsOptions{AdminPassword: "A!9secret"},
+	})
+	if err != nil {
+		t.Fatalf("BIOS Spec: %v", err)
+	}
+	biosXML := string(bios.Seed.Files[0].Data)
+	for _, want := range []string{"System Reserved", "<PartitionID>2</PartitionID>"} {
+		if !strings.Contains(biosXML, want) {
+			t.Errorf("BIOS autounattend missing %q", want)
+		}
+	}
+	if strings.Contains(biosXML, "<Type>EFI</Type>") {
+		t.Error("BIOS autounattend unexpectedly contains an EFI partition")
+	}
+}
+
+func TestWindowsGeneratedRequiresPasswordAndKey(t *testing.T) {
+	impl, _ := Lookup(WindowsAutoUnattend)
+	if _, err := impl.Spec(Input{Hostname: "win", SSHUser: "Administrator", SSHKey: "ssh-ed25519 AAAA"}); err == nil || !strings.Contains(err.Error(), "admin_password") {
+		t.Fatalf("missing password error = %v", err)
+	}
+	if _, err := impl.Spec(Input{Hostname: "win", SSHUser: "Administrator", Windows: &WindowsOptions{AdminPassword: "pw"}}); err == nil || !strings.Contains(err.Error(), "SSH authorized key") {
+		t.Fatalf("missing key error = %v", err)
 	}
 }
 

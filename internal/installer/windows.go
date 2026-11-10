@@ -1,8 +1,6 @@
 package installer
 
 import (
-	"fmt"
-
 	"vmlite/internal/seed"
 )
 
@@ -14,7 +12,7 @@ func (windowsAutoUnattend) Type() string { return WindowsAutoUnattend }
 func (windowsAutoUnattend) DefaultSSHUser() string { return "Administrator" }
 
 // RequiresAnswerFile reports that Windows Setup needs a supplied autounattend.xml.
-func (windowsAutoUnattend) RequiresAnswerFile() bool { return true }
+func (windowsAutoUnattend) RequiresAnswerFile() bool { return false }
 
 func (windowsAutoUnattend) Spec(in Input) (Spec, error) {
 	if err := validateHostname(in.Hostname); err != nil {
@@ -23,11 +21,18 @@ func (windowsAutoUnattend) Spec(in Input) (Spec, error) {
 	if err := validateUser(in.SSHUser); err != nil {
 		return Spec{}, err
 	}
-	if len(in.AnswerFile) == 0 {
-		return Spec{}, fmt.Errorf("windows_autounattend requires installer.config or installer.inline with an autounattend.xml")
+
+	answer := in.AnswerFile
+	if len(answer) == 0 {
+		var err error
+		answer, err = renderWindowsAutoUnattend(in)
+		if err != nil {
+			return Spec{}, err
+		}
+	} else {
+		answer = []byte(replacePlaceholders(string(answer), in))
 	}
 
-	answer := []byte(replacePlaceholders(string(in.AnswerFile), in))
 	return Spec{
 		Type: WindowsAutoUnattend,
 		Seed: &seed.Volume{

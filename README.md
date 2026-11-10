@@ -138,29 +138,26 @@ and grants NOPASSWD sudo.
 
 ### Windows guests
 
-Windows uses `autounattend.xml` as answer media. The file is attached as a
-CD-ROM; Windows Setup scans removable media for it. The answer file must set up
-OpenSSH and authorize the generated key. Use these placeholders:
-
-- `{{VMLITE_HOSTNAME}}`
-- `{{VMLITE_SSH_USER}}`
-- `{{VMLITE_SSH_AUTHORIZED_KEY}}`
+Windows uses an `autounattend.xml` answer file attached as a CD-ROM. vmlite can
+generate a default for Windows Server evaluation media:
 
 ```json
 {
-  "name": "win11",
+  "name": "win-server",
   "memory": 4096,
   "cpus": 2,
-  "os_variant": "win11",
+  "os_variant": "win2022",
   "firmware": "uefi",
-  "secure_boot": true,
-  "tpm": { "version": "2.0" },
   "source": {
     "type": "iso",
-    "path": "/isos/win11.iso",
+    "path": "/isos/windows-server.iso",
     "installer": {
       "type": "windows_autounattend",
-      "config": "./autounattend.xml"
+      "windows": {
+        "locale": "en-US",
+        "timezone": "UTC",
+        "image_index": 1
+      }
     }
   },
   "disk": { "size": 64, "format": "qcow2", "bus": "sata" },
@@ -170,13 +167,40 @@ OpenSSH and authorize the generated key. Use these placeholders:
 }
 ```
 
+- The default template generates the disk layout, Administrator account,
+  OpenSSH Server setup, SSH key ACLs, and firewall rule.
+- `image_index` defaults to `1`; set it to the Windows image you want.
 - `ssh.user` defaults to `Administrator` for `windows_autounattend`.
+- If `windows.admin_password` is omitted, vmlite generates a random password
+  and writes it to `.vmlite/<name>/windows-admin-password` with mode `0600`.
+  `vmlite up` and `vmlite status` print the path.
+- Windows Setup can require Secure Boot and TPM 2.0 for Windows 11:
+  `secure_boot: true` and `tpm: { "version": "2.0" }`.
 - Install completion is SSH-based: `vmlite provision` waits for the installed
   Windows guest to expose SSH instead of waiting for the installer domain to
   shut off.
 - `disk.bus: "sata"` avoids virtio driver injection during Setup. Use `virtio`
-  only when `virtio-win` drivers are integrated into the answer media.
+  only when `virtio-win` drivers are integrated into the media.
 - Windows guest disks are large; a practical test needs 30–64 GiB.
+- The generated default targets Windows Server evaluation media. It installs
+  OpenSSH with `Add-WindowsCapability`, which needs the capability payload or
+  Windows Update. For offline or client media, supply a custom answer file.
+- The generated Administrator password is present in the seed ISO and in the
+  host-side password file; treat both as sensitive local VM state.
+
+For other Windows editions or custom OpenSSH setup, provide your own answer
+file. It supports the placeholders:
+
+- `{{VMLITE_HOSTNAME}}`
+- `{{VMLITE_SSH_USER}}`
+- `{{VMLITE_SSH_AUTHORIZED_KEY}}`
+
+```json
+"installer": {
+  "type": "windows_autounattend",
+  "config": "./autounattend.xml"
+}
+```
 
 ### Windows PE boot tests
 

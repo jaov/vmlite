@@ -27,6 +27,7 @@ type Input struct {
 	SSHUser    string
 	SSHKey     string
 	AnswerFile []byte
+	Windows    *WindowsOptions
 }
 
 // Completion describes how vmlite knows an unattended install is finished.

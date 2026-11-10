@@ -134,7 +134,7 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"bad tpm version", base(`, "firmware": "uefi", "tpm": {"version": "3.0"}`), "tpm.version must be"},
 		{"bad tpm backend", base(`, "firmware": "uefi", "tpm": {"backend": "passthrough"}`), "tpm.backend must be"},
 		{"bad disk bus", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "none"}, "disk": {"size": 5, "bus": "ide"}}`, "disk.bus must be"},
-		{"windows installer without answer file", `{"name": "win", "memory": 4096, "cpus": 2, "source": {"type": "iso", "path": "/tmp/win.iso", "installer": {"type": "windows_autounattend"}}, "disk": {"size": 64, "bus": "sata"}}`, "requires config or inline"},
+		{"windows installer without ssh", `{"name": "win", "memory": 4096, "cpus": 2, "source": {"type": "iso", "path": "/tmp/win.iso", "installer": {"type": "windows_autounattend"}}, "disk": {"size": 64, "bus": "sata"}}`, "requires ssh.key or a provisioner"},
 	}
 
 	for _, tc := range tests {
@@ -270,6 +270,56 @@ func TestLoadConfigWindowsInstaller(t *testing.T) {
 	}
 	if spec.DiskBus != "sata" || spec.Completion != "ssh" {
 		t.Fatalf("spec = %+v", spec)
+	}
+}
+
+func TestWindowsGeneratedAutounattend(t *testing.T) {
+	path := writeConfigFile(t, `{
+		"name": "win11",
+		"memory": 4096,
+		"cpus": 2,
+		"firmware": "uefi",
+		"source": {
+			"type": "iso",
+			"path": "/tmp/win11.iso",
+			"installer": {
+				"type": "windows_autounattend",
+				"windows": {"image_index": 2, "timezone": "UTC"}
+			}
+		},
+		"disk": {"size": 64, "bus": "sata"},
+		"provisioners": [{"type": "powershell", "inline": "Write-Output hi"}]
+	}`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	cfg.assetDir = t.TempDir()
+	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
+	spec, err := cfg.installerSpec()
+	if err != nil {
+		t.Fatalf("installerSpec: %v", err)
+	}
+	answer := string(spec.Seed.Files[0].Data)
+	for _, want := range []string{"<Value>2</Value>", "Add-WindowsCapability", "ssh-ed25519 AAAA test", "<AdministratorPassword>"} {
+		if !strings.Contains(answer, want) {
+			t.Errorf("autounattend missing %q", want)
+		}
+	}
+	passwordPath := filepath.Join(cfg.assetDir, "windows-admin-password")
+	data, err := os.ReadFile(passwordPath)
+	if err != nil {
+		t.Fatalf("read generated password: %v", err)
+	}
+	if strings.TrimSpace(string(data)) == "" {
+		t.Fatal("generated password is empty")
+	}
+	info, err := os.Stat(passwordPath)
+	if err != nil {
+		t.Fatalf("stat generated password: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("password mode = %o, want 600", info.Mode().Perm())
 	}
 }
 

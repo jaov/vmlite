@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	guestinstall "vmlite/internal/installer"
 )
 
 var errNotRunning = errors.New("VM is not running")
@@ -179,6 +181,12 @@ func runUp(args []string) error {
 		fmt.Printf("VM %q created successfully via %s\n", cfg.Name, uri)
 		if cfg.hasInstaller() {
 			fmt.Printf("Installer %q started; after it reboots, run: vmlite provision %s\n", cfg.Source.Installer.Type, configPath)
+			if cfg.Source.Installer.Type == guestinstall.WindowsAutoUnattend {
+				passwordPath := filepath.Join(layout.AssetDir, "windows-admin-password")
+				if _, err := os.Stat(passwordPath); err == nil {
+					fmt.Printf("Windows administrator password: %s\n", passwordPath)
+				}
+			}
 			return nil
 		}
 		if len(cfg.Provisioners) > 0 {
@@ -286,6 +294,12 @@ func runStatus(args []string) error {
 	}
 	if st.InstallerType != "" {
 		fmt.Printf("Installer: %s\n", st.InstallerType)
+	}
+	if st.InstallerType == guestinstall.WindowsAutoUnattend && st.AssetDir != "" {
+		passwordPath := filepath.Join(st.AssetDir, "windows-admin-password")
+		if _, err := os.Stat(passwordPath); err == nil {
+			fmt.Printf("Windows password: %s\n", passwordPath)
+		}
 	}
 	if st.InstallerISOPath != "" {
 		fmt.Printf("Installer ISO: %s\n", st.InstallerISOPath)

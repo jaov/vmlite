@@ -24,14 +24,22 @@ func TestWindowsAutoinstall(t *testing.T) {
 	}
 	iso := os.Getenv("VMLITE_TEST_WINDOWS_ISO")
 	unattend := os.Getenv("VMLITE_TEST_WINDOWS_UNATTEND")
-	if iso == "" || unattend == "" {
-		t.Skip("set VMLITE_TEST_WINDOWS_ISO and VMLITE_TEST_WINDOWS_UNATTEND")
+	if iso == "" {
+		t.Skip("set VMLITE_TEST_WINDOWS_ISO")
 	}
 	if _, err := os.Stat(iso); err != nil {
 		t.Skipf("VMLITE_TEST_WINDOWS_ISO is not accessible: %v", err)
 	}
-	if _, err := os.Stat(unattend); err != nil {
-		t.Skipf("VMLITE_TEST_WINDOWS_UNATTEND is not accessible: %v", err)
+	unattendPath := ""
+	if unattend != "" {
+		if _, err := os.Stat(unattend); err != nil {
+			t.Skipf("VMLITE_TEST_WINDOWS_UNATTEND is not accessible: %v", err)
+		}
+		abs, err := filepath.Abs(unattend)
+		if err != nil {
+			t.Fatalf("resolve autounattend: %v", err)
+		}
+		unattendPath = abs
 	}
 	requireIntegration(t)
 	if err := ValidateConnection(systemURI); err != nil {
@@ -64,10 +72,6 @@ func TestWindowsAutoinstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve Windows ISO: %v", err)
 	}
-	unattendPath, err := filepath.Abs(unattend)
-	if err != nil {
-		t.Fatalf("resolve autounattend: %v", err)
-	}
 
 	name := uniqueName()
 	pool := filepath.Base(workDir)
@@ -94,8 +98,7 @@ func TestWindowsAutoinstall(t *testing.T) {
 			Type: sourceISO,
 			Path: isoPath,
 			Installer: &Installer{
-				Type:   "windows_autounattend",
-				Config: unattendPath,
+				Type: "windows_autounattend",
 			},
 		},
 		Disk:     Disk{Size: 64, Path: filepath.Join(workDir, "disk.qcow2"), Format: diskFormatQCOW2, Bus: diskBusSATA},
@@ -110,6 +113,14 @@ func TestWindowsAutoinstall(t *testing.T) {
 		cfg.SecureBoot = false
 		cfg.TPM = nil
 		cfg.OSVariant = envDefault("VMLITE_TEST_WINDOWS_OS_VARIANT", "win10")
+	}
+	if unattendPath != "" {
+		cfg.Source.Installer.Config = unattendPath
+	} else {
+		cfg.Source.Installer.Windows = &WindowsInstaller{
+			Locale:   os.Getenv("VMLITE_TEST_WINDOWS_LOCALE"),
+			Timezone: os.Getenv("VMLITE_TEST_WINDOWS_TIMEZONE"),
+		}
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,12 +25,53 @@ func (c *Config) installerSpec() (guestinstall.Spec, error) {
 	if err != nil {
 		return guestinstall.Spec{}, err
 	}
-	return impl.Spec(guestinstall.Input{
+	input := guestinstall.Input{
 		Hostname:   c.Name,
 		SSHUser:    c.sshUser(),
 		SSHKey:     c.sshPublicKey,
 		AnswerFile: answer,
-	})
+	}
+	if c.Source.Installer.Type == guestinstall.WindowsAutoUnattend {
+		windows := guestinstall.WindowsOptions{Firmware: c.Firmware}
+		if inst := c.Source.Installer.Windows; inst != nil {
+			windows.Locale = inst.Locale
+			windows.InputLocale = inst.InputLocale
+			windows.Timezone = inst.Timezone
+			windows.ImageIndex = inst.ImageIndex
+			windows.AdminPassword = inst.AdminPassword
+		}
+		if len(answer) == 0 && strings.TrimSpace(windows.AdminPassword) == "" {
+			password, err := c.windowsAdminPassword()
+			if err != nil {
+				return guestinstall.Spec{}, err
+			}
+			windows.AdminPassword = password
+		}
+		input.Windows = &windows
+	}
+	return impl.Spec(input)
+}
+
+func (c *Config) windowsAdminPassword() (string, error) {
+	if c.windowsPassword != "" {
+		return c.windowsPassword, nil
+	}
+	raw := make([]byte, 18)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generate Windows administrator password: %w", err)
+	}
+	password := "A!9" + hex.EncodeToString(raw)
+	c.windowsPassword = password
+	if strings.TrimSpace(c.assetDir) != "" {
+		if err := os.MkdirAll(c.assetDir, 0o755); err != nil {
+			return "", fmt.Errorf("create asset dir: %w", err)
+		}
+		path := filepath.Join(c.assetDir, "windows-admin-password")
+		if err := os.WriteFile(path, []byte(password+"\n"), 0o600); err != nil {
+			return "", fmt.Errorf("write Windows administrator password: %w", err)
+		}
+	}
+	return password, nil
 }
 
 func (c *Config) installerAnswerFile() ([]byte, error) {

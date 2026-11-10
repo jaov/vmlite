@@ -229,16 +229,22 @@ rather than attached as a separate seed. `pkgsel` needs guest access to
 
 ### Windows autounattend test
 
-A full Windows test needs a Windows ISO, an `autounattend.xml` that enables
-OpenSSH and installs `{{VMLITE_SSH_AUTHORIZED_KEY}}`, and a large work
-filesystem:
+A full Windows test needs a Windows ISO and a large work filesystem. By
+default the test uses the generated Windows Server autounattend; pass
+`VMLITE_TEST_WINDOWS_UNATTEND` to use a custom file instead:
 
 ```bash
+VMLITE_TEST_WINDOWS_INSTALL=1 \
+VMLITE_TEST_WINDOWS_ISO=/large/windows-server.iso \
+VMLITE_TEST_WORKDIR=/large/disk \
+  go test -tags integration -timeout 120m -run TestWindowsAutoinstall -v ./...
+
+# Custom answer file:
 VMLITE_TEST_WINDOWS_INSTALL=1 \
 VMLITE_TEST_WINDOWS_ISO=/large/windows.iso \
 VMLITE_TEST_WINDOWS_UNATTEND=/large/autounattend.xml \
 VMLITE_TEST_WORKDIR=/large/disk \
-  go test -tags integration -run TestWindowsAutoinstall -v ./...
+  go test -tags integration -timeout 120m -run TestWindowsAutoinstall -v ./...
 ```
 
 The test uses Windows 11 defaults (UEFI, Secure Boot, TPM 2.0, SATA disk,
