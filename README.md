@@ -63,9 +63,15 @@ a stopped VM is started, and config/connection drift requires `--recreate`.
   `vmlite provision`.
 - `vmlite provision vm.json` reruns pending/always scripts.
 - `vmlite provision --force vm.json` reruns once-provisioners too.
-- Shell provisioners require a Linux cloud image or an automated ISO installer
-  on `qemu:///system` with a guest-visible network. `session`/user-mode
+- Shell provisioners require a Linux cloud image, an automated ISO installer,
+  a manual ISO with `ssh.key`, or a prebuilt disk with `ssh.key`, on
+  `qemu:///system` with a guest-visible network. `session`/user-mode
   networking is rejected.
+- Manual ISO installs and prebuilt disks require a user-provided `ssh.key`;
+  vmlite does not generate a key that the guest cannot receive. `up` starts a
+  manual ISO and never provisions it. After installing the OS and authorizing
+  the key, run `vmlite provision`. Disk sources auto-provision on `up` because
+  the OS is already installed.
 - `vmlite status` reports the guest IP; services are reached at
   `guest-ip:5432`, `guest-ip:8080`, etc.
 

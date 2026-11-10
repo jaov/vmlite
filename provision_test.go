@@ -116,6 +116,20 @@ func TestClearInstallerBoot(t *testing.T) {
 	}
 }
 
+func TestEnsureSSHKeyRequiresUserKey(t *testing.T) {
+	for _, sourceType := range []string{sourceISO, sourceDisk} {
+		cfg := &Config{
+			Name:         "dev",
+			Source:       Source{Type: sourceType, Path: "/tmp/source"},
+			Provisioners: []Provisioner{{Type: "shell", Inline: "true"}},
+		}
+		err := ensureSSHKey(cfg, projectLayout{AssetDir: t.TempDir()})
+		if err == nil || !strings.Contains(err.Error(), "ssh.key is required") {
+			t.Fatalf("source %q: error = %v, want ssh.key requirement", sourceType, err)
+		}
+	}
+}
+
 func TestWaitForIPv4PrefersARP(t *testing.T) {
 	binDir := t.TempDir()
 	script := "#!/bin/sh\n" +

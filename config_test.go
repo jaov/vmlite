@@ -117,7 +117,7 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"extra disk no path", base(`, "extra_disks": [{}]`), "extra_disks[0].path is required"},
 		{"bad extra disk device", base(`, "extra_disks": [{"path": "/tmp/x", "device": "floppy"}]`), "extra_disks[0].device must be"},
 		{"bad extra disk format", base(`, "extra_disks": [{"path": "/tmp/x", "format": "vmdk"}]`), "extra_disks[0].format must be"},
-		{"provisioner without cloud image", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "none"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "ssh/provisioners require"},
+		{"provisioner without cloud image", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "none"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "not supported"},
 		{"provisioner both sources", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "path": "/tmp/a", "inline": "true"}]}`, "exactly one of path or inline"},
 		{"provisioner without source", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell"}]}`, "exactly one of path or inline"},
 		{"provisioner bad run", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true", "run": "sometimes"}]}`, "run must be"},
@@ -126,7 +126,8 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"unknown installer", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso", "installer": {"type": "nope"}}, "disk": {"size": 5}}`, "unsupported installer.type"},
 		{"installer config and inline", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso", "installer": {"type": "ubuntu_autoinstall", "config": "/tmp/a", "inline": "x"}}, "disk": {"size": 5}}`, "at most one"},
 		{"installer missing type", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso", "installer": {}}, "disk": {"size": 5}}`, "installer.type is required"},
-		{"manual iso provisioners", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "ssh/provisioners require"},
+		{"manual iso provisioners", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "ssh.key is required for manual ISO provisioning"},
+		{"disk provisioners without key", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "disk", "path": "/tmp/x.qcow2"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "ssh.key is required for disk provisioning"},
 	}
 
 	for _, tc := range tests {
@@ -189,6 +190,22 @@ func TestInstallerAnswerFileRelative(t *testing.T) {
 	}
 	if !strings.Contains(string(got), "version: 1") {
 		t.Fatalf("answer file = %q", got)
+	}
+}
+
+func TestLoadConfigManualISOAndDiskProvisioning(t *testing.T) {
+	cases := []string{
+		`{"name": "manual", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso"}, "disk": {"size": 5}, "ssh": {"user": "deploy", "key": "/tmp/id_ed25519"}, "provisioners": [{"type": "shell", "inline": "true"}]}`,
+		`{"name": "disk", "memory": 1024, "cpus": 1, "source": {"type": "disk", "path": "/tmp/x.qcow2"}, "disk": {"size": 5}, "ssh": {"user": "deploy", "key": "/tmp/id_ed25519"}, "provisioners": [{"type": "shell", "inline": "true"}]}`,
+	}
+	for _, content := range cases {
+		cfg, err := LoadConfig(writeConfigFile(t, content))
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.SSH.Key != "/tmp/id_ed25519" || cfg.SSH.User != "deploy" {
+			t.Fatalf("ssh = %+v", cfg.SSH)
+		}
 	}
 }
 

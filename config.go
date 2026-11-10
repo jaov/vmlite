@@ -259,11 +259,15 @@ func (c *Config) Validate() error {
 		switch c.Source.Type {
 		case sourceCloudImage:
 		case sourceISO:
-			if c.Source.Installer == nil {
-				return fmt.Errorf("ssh/provisioners require source.type %q or an ISO installer", sourceCloudImage)
+			if c.Source.Installer == nil && strings.TrimSpace(c.SSH.Key) == "" {
+				return fmt.Errorf("ssh.key is required for manual ISO provisioning")
+			}
+		case sourceDisk:
+			if strings.TrimSpace(c.SSH.Key) == "" {
+				return fmt.Errorf("ssh.key is required for disk provisioning")
 			}
 		default:
-			return fmt.Errorf("ssh/provisioners require source.type %q or an ISO installer", sourceCloudImage)
+			return fmt.Errorf("ssh/provisioners are not supported for source.type %q", c.Source.Type)
 		}
 	}
 	if len(c.Provisioners) > 0 {
