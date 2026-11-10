@@ -258,17 +258,20 @@ func TestBootArgs(t *testing.T) {
 	cases := []struct {
 		firmware string
 		order    []string
+		secure   bool
 		want     []string
 	}{
-		{firmwareBIOS, nil, nil},
-		{firmwareUEFI, nil, []string{"--boot", "uefi"}},
-		{firmwareBIOS, []string{"hd", "cdrom"}, []string{"--boot", "hd,cdrom"}},
-		{firmwareUEFI, []string{"hd", "cdrom"}, []string{"--boot", "uefi,hd,cdrom"}},
+		{firmwareBIOS, nil, false, nil},
+		{firmwareUEFI, nil, false, []string{"--boot", "uefi"}},
+		{firmwareUEFI, nil, true, []string{"--boot", "uefi,loader.secure=on"}},
+		{firmwareBIOS, []string{"hd", "cdrom"}, false, []string{"--boot", "hd,cdrom"}},
+		{firmwareUEFI, []string{"hd", "cdrom"}, false, []string{"--boot", "uefi,hd,cdrom"}},
+		{firmwareUEFI, []string{"hd", "cdrom"}, true, []string{"--boot", "uefi,loader.secure=on,hd,cdrom"}},
 	}
 	for _, tc := range cases {
-		got := bootArgs(tc.firmware, tc.order)
+		got := bootArgs(tc.firmware, tc.order, tc.secure)
 		if !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("bootArgs(%q, %v) = %q, want %q", tc.firmware, tc.order, got, tc.want)
+			t.Errorf("bootArgs(%q, %v, %v) = %q, want %q", tc.firmware, tc.order, tc.secure, got, tc.want)
 		}
 	}
 }
@@ -388,6 +391,42 @@ func TestBuildVirtInstallArgsISOInstallerUEFI(t *testing.T) {
 	}
 	if !containsAll(got, "--boot", "uefi,hd,cdrom") {
 		t.Fatalf("args missing uefi installer boot order: %q", got)
+	}
+}
+
+func TestBuildVirtInstallArgsWindowsDevices(t *testing.T) {
+	cfg := baseTestConfig()
+	cfg.OSVariant = "win11"
+	cfg.Firmware = firmwareUEFI
+	cfg.SecureBoot = true
+	cfg.TPM = &TPM{Version: tpmVersion20}
+	cfg.Disk.Bus = diskBusSATA
+
+	got, err := buildVirtInstallArgs(&cfg, systemURI)
+	if err != nil {
+		t.Fatalf("buildVirtInstallArgs: %v", err)
+	}
+	if !containsAll(got,
+		"--boot", "uefi,loader.secure=on",
+		"--tpm", "backend.type=emulator,backend.version=2.0",
+		"--disk", "size=5,bus=sata",
+	) {
+		t.Fatalf("args missing Windows device settings: %q", got)
+	}
+}
+
+func TestBuildVirtInstallArgsDiskSourceBus(t *testing.T) {
+	disk := filepath.Join(t.TempDir(), "windows.qcow2")
+	cfg := baseTestConfig()
+	cfg.Source = Source{Type: sourceDisk, Path: disk}
+	cfg.Disk = Disk{Format: diskFormatQCOW2, Bus: diskBusSATA}
+
+	got, err := buildVirtInstallArgs(&cfg, systemURI)
+	if err != nil {
+		t.Fatalf("buildVirtInstallArgs: %v", err)
+	}
+	if !containsAll(got, "--import", "path="+disk+",format=qcow2,bus=sata") {
+		t.Fatalf("args missing disk bus: %q", got)
 	}
 }
 

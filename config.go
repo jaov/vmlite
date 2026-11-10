@@ -39,6 +39,15 @@ const (
 	diskFormatAuto  = "auto"
 	diskFormatQCOW2 = "qcow2"
 	diskFormatRaw   = "raw"
+
+	diskBusAuto   = "auto"
+	diskBusVirtio = "virtio"
+	diskBusSATA   = "sata"
+	diskBusSCSI   = "scsi"
+
+	tpmBackendEmulator = "emulator"
+	tpmVersion12       = "1.2"
+	tpmVersion20       = "2.0"
 )
 
 // Config describes the virtual machine that vmlite creates.
@@ -48,6 +57,8 @@ type Config struct {
 	CPUs         int           `json:"cpus"`
 	OSVariant    string        `json:"os_variant,omitempty"`
 	Firmware     string        `json:"firmware,omitempty"`
+	SecureBoot   bool          `json:"secure_boot,omitempty"`
+	TPM          *TPM          `json:"tpm,omitempty"`
 	Source       Source        `json:"source"`
 	Disk         Disk          `json:"disk"`
 	Mounts       []Mount       `json:"mounts,omitempty"`
@@ -125,6 +136,36 @@ type Disk struct {
 	Size   int    `json:"size"`             // in GiB
 	Path   string `json:"path,omitempty"`   // optional explicit path
 	Format string `json:"format,omitempty"` // auto, qcow2, raw
+	Bus    string `json:"bus,omitempty"`    // auto, virtio, sata, scsi
+}
+
+// TPM describes an emulated TPM device.
+type TPM struct {
+	Version string `json:"version,omitempty"` // 1.2, 2.0
+	Backend string `json:"backend,omitempty"` // emulator
+}
+
+func (c *Config) diskBus() string {
+	switch c.Disk.Bus {
+	case "", diskBusAuto:
+		return ""
+	default:
+		return c.Disk.Bus
+	}
+}
+
+func (c *Config) tpmBackend() string {
+	if c.TPM != nil && strings.TrimSpace(c.TPM.Backend) != "" {
+		return c.TPM.Backend
+	}
+	return tpmBackendEmulator
+}
+
+func (c *Config) tpmVersion() string {
+	if c.TPM != nil && strings.TrimSpace(c.TPM.Version) != "" {
+		return c.TPM.Version
+	}
+	return tpmVersion20
 }
 
 // Mount is a host directory exposed to the guest.
@@ -199,6 +240,24 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("firmware must be %q or %q", firmwareBIOS, firmwareUEFI)
 	}
+	if c.SecureBoot && c.Firmware != firmwareUEFI {
+		return fmt.Errorf("secure_boot requires firmware %q", firmwareUEFI)
+	}
+	if c.TPM != nil {
+		if c.Firmware != firmwareUEFI {
+			return fmt.Errorf("tpm requires firmware %q", firmwareUEFI)
+		}
+		switch c.tpmBackend() {
+		case tpmBackendEmulator:
+		default:
+			return fmt.Errorf("tpm.backend must be %q", tpmBackendEmulator)
+		}
+		switch c.tpmVersion() {
+		case tpmVersion12, tpmVersion20:
+		default:
+			return fmt.Errorf("tpm.version must be %q or %q", tpmVersion12, tpmVersion20)
+		}
+	}
 
 	if err := c.validateSource(); err != nil {
 		return err
@@ -208,6 +267,11 @@ func (c *Config) Validate() error {
 	case "", diskFormatAuto, diskFormatQCOW2, diskFormatRaw:
 	default:
 		return fmt.Errorf("disk.format must be %q, %q, or %q", diskFormatAuto, diskFormatQCOW2, diskFormatRaw)
+	}
+	switch c.Disk.Bus {
+	case "", diskBusAuto, diskBusVirtio, diskBusSATA, diskBusSCSI:
+	default:
+		return fmt.Errorf("disk.bus must be %q, %q, %q, or %q", diskBusAuto, diskBusVirtio, diskBusSATA, diskBusSCSI)
 	}
 
 	for i, m := range c.Mounts {

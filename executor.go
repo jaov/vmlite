@@ -35,7 +35,10 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	args = append(args, bootArgs(cfg.Firmware, spec.BootOrder)...)
+	args = append(args, bootArgs(cfg.Firmware, spec.BootOrder, cfg.SecureBoot)...)
+	if cfg.TPM != nil {
+		args = append(args, "--tpm", fmt.Sprintf("backend.type=%s,backend.version=%s", cfg.tpmBackend(), cfg.tpmVersion()))
+	}
 	if cfg.hasInstaller() {
 		// Installer disks are sparse qcow2 and often live on smaller tmpfs
 		// pools; the fully-allocated capacity check is too pessimistic.
@@ -124,9 +127,13 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
+		diskSpec := fmt.Sprintf("path=%s,format=qcow2", overlay)
+		if bus := cfg.diskBus(); bus != "" {
+			diskSpec += ",bus=" + bus
+		}
 		args := []string{
 			"--import",
-			"--disk", fmt.Sprintf("path=%s,format=qcow2", overlay),
+			"--disk", diskSpec,
 		}
 		if cfg.needsSeed() {
 			seed, err := cfg.seedPath()
@@ -202,9 +209,13 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("resolve disk %q: %w", cfg.Source.Path, err)
 		}
+		diskSpec := fmt.Sprintf("path=%s,format=%s", path, format)
+		if bus := cfg.diskBus(); bus != "" {
+			diskSpec += ",bus=" + bus
+		}
 		return []string{
 			"--import",
-			"--disk", fmt.Sprintf("path=%s,format=%s", path, format),
+			"--disk", diskSpec,
 			"--events", "on_reboot=restart,on_poweroff=destroy,on_crash=restart",
 		}, nil
 
@@ -221,23 +232,35 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 }
 
 func primaryDiskArgs(cfg *Config) ([]string, error) {
+	bus := cfg.diskBus()
 	if strings.TrimSpace(cfg.Disk.Path) != "" {
 		path, err := filepath.Abs(cfg.Disk.Path)
 		if err != nil {
 			return nil, fmt.Errorf("resolve disk path %q: %w", cfg.Disk.Path, err)
 		}
-		return []string{"--disk", fmt.Sprintf("path=%s,size=%d,format=%s", path, cfg.Disk.Size, cfg.newDiskFormat())}, nil
+		spec := fmt.Sprintf("path=%s,size=%d,format=%s", path, cfg.Disk.Size, cfg.newDiskFormat())
+		if bus != "" {
+			spec += ",bus=" + bus
+		}
+		return []string{"--disk", spec}, nil
 	}
-	return []string{"--disk", fmt.Sprintf("size=%d", cfg.Disk.Size)}, nil
+	spec := fmt.Sprintf("size=%d", cfg.Disk.Size)
+	if bus != "" {
+		spec += ",bus=" + bus
+	}
+	return []string{"--disk", spec}, nil
 }
 
-func primaryDiskArgsBus(cfg *Config, bus string) ([]string, error) {
+func primaryDiskArgsBus(cfg *Config, defaultBus string) ([]string, error) {
 	args, err := primaryDiskArgs(cfg)
-	if err != nil || bus == "" {
+	if err != nil {
 		return args, err
 	}
+	if cfg.diskBus() != "" || defaultBus == "" {
+		return args, nil
+	}
 	if len(args) == 2 && args[0] == "--disk" {
-		args[1] += ",bus=" + bus
+		args[1] += ",bus=" + defaultBus
 	}
 	return args, nil
 }
@@ -245,12 +268,14 @@ func primaryDiskArgsBus(cfg *Config, bus string) ([]string, error) {
 // bootArgs composes firmware and boot order into one --boot argument. A boot
 // order is only needed when a source must boot installer media and then switch
 // to the installed disk.
-func bootArgs(firmware string, order []string) []string {
+func bootArgs(firmware string, order []string, secureBoot bool) []string {
 	if firmware == firmwareUEFI {
-		if len(order) == 0 {
-			return []string{"--boot", "uefi"}
+		parts := []string{"uefi"}
+		if secureBoot {
+			parts = append(parts, "loader.secure=on")
 		}
-		return []string{"--boot", "uefi," + strings.Join(order, ",")}
+		parts = append(parts, order...)
+		return []string{"--boot", strings.Join(parts, ",")}
 	}
 	if len(order) == 0 {
 		return nil

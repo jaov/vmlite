@@ -128,6 +128,11 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"installer missing type", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso", "installer": {}}, "disk": {"size": 5}}`, "installer.type is required"},
 		{"manual iso provisioners", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "ssh.key is required for manual ISO provisioning"},
 		{"disk provisioners without key", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "disk", "path": "/tmp/x.qcow2"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "ssh.key is required for disk provisioning"},
+		{"secure boot without uefi", base(`, "secure_boot": true`), "secure_boot requires"},
+		{"tpm without uefi", base(`, "tpm": {"version": "2.0"}`), "tpm requires"},
+		{"bad tpm version", base(`, "firmware": "uefi", "tpm": {"version": "3.0"}`), "tpm.version must be"},
+		{"bad tpm backend", base(`, "firmware": "uefi", "tpm": {"backend": "passthrough"}`), "tpm.backend must be"},
+		{"bad disk bus", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "none"}, "disk": {"size": 5, "bus": "ide"}}`, "disk.bus must be"},
 	}
 
 	for _, tc := range tests {
@@ -206,6 +211,30 @@ func TestLoadConfigManualISOAndDiskProvisioning(t *testing.T) {
 		if cfg.SSH.Key != "/tmp/id_ed25519" || cfg.SSH.User != "deploy" {
 			t.Fatalf("ssh = %+v", cfg.SSH)
 		}
+	}
+}
+
+func TestLoadConfigWindowsDevices(t *testing.T) {
+	path := writeConfigFile(t, `{
+		"name": "win11",
+		"memory": 4096,
+		"cpus": 2,
+		"os_variant": "win11",
+		"firmware": "uefi",
+		"secure_boot": true,
+		"tpm": {"version": "2.0"},
+		"source": {"type": "none"},
+		"disk": {"size": 64, "format": "qcow2", "bus": "sata"}
+	}`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if !cfg.SecureBoot || cfg.TPM == nil || cfg.TPM.Version != tpmVersion20 {
+		t.Fatalf("firmware/tpm = %+v %+v", cfg.SecureBoot, cfg.TPM)
+	}
+	if cfg.diskBus() != diskBusSATA {
+		t.Fatalf("diskBus = %q", cfg.diskBus())
 	}
 }
 
