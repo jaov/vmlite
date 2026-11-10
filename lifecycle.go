@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -241,10 +242,33 @@ func runUp(args []string) error {
 	}
 }
 
+type statusJSON struct {
+	Name                string            `json:"name"`
+	ConfigPath          string            `json:"config_path,omitempty"`
+	URI                 string            `json:"uri,omitempty"`
+	State               string            `json:"state"`
+	Running             bool              `json:"running"`
+	Disk                string            `json:"disk,omitempty"`
+	Image               string            `json:"image,omitempty"`
+	IP                  string            `json:"ip,omitempty"`
+	Installer           string            `json:"installer,omitempty"`
+	InstallerCompletion string            `json:"installer_completion,omitempty"`
+	InstallPhase        string            `json:"install_phase,omitempty"`
+	Provisioned         []ProvisionRecord `json:"provisioned,omitempty"`
+	UpdatedAt           string            `json:"updated_at,omitempty"`
+}
+
+func writeStatusJSON(w io.Writer, status statusJSON) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(status)
+}
+
 func runStatus(args []string) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	jsonOut := fs.Bool("json", false, "print machine-readable JSON")
 	if err := fs.Parse(args); err != nil {
 		return errUsage
 	}
@@ -270,16 +294,67 @@ func runStatus(args []string) error {
 		return err
 	}
 	if st == nil {
-		fmt.Printf("VM %q has not been created (no state at %s)\n", cfg.Name, layout.StateFile)
+		if *jsonOut {
+			if err := writeStatusJSON(os.Stdout, statusJSON{
+				Name:       cfg.Name,
+				ConfigPath: layout.ConfigPath,
+				State:      "not created",
+			}); err != nil {
+				return err
+			}
+		} else {
+			fmt.Printf("VM %q has not been created (no state at %s)\n", cfg.Name, layout.StateFile)
+		}
 		return errNotRunning
 	}
 
 	stateText, exists := domainStatus(st.LibvirtURI, st.Name)
 	if !exists {
-		fmt.Printf("VM %q: missing (state exists)\n", st.Name)
+		if *jsonOut {
+			if err := writeStatusJSON(os.Stdout, statusJSON{
+				Name:       st.Name,
+				ConfigPath: st.ConfigPath,
+				URI:        st.LibvirtURI,
+				State:      "missing",
+				Disk:       st.DiskPath,
+				Image:      st.ImagePath,
+				IP:         st.IP,
+				Installer:  st.InstallerType,
+			}); err != nil {
+				return err
+			}
+		} else {
+			fmt.Printf("VM %q: missing (state exists)\n", st.Name)
+		}
 		return errNotRunning
 	}
 	stateText = strings.TrimSpace(stateText)
+	running := strings.Contains(stateText, "running")
+
+	if *jsonOut {
+		if err := writeStatusJSON(os.Stdout, statusJSON{
+			Name:                st.Name,
+			ConfigPath:          st.ConfigPath,
+			URI:                 st.LibvirtURI,
+			State:               stateText,
+			Running:             running,
+			Disk:                st.DiskPath,
+			Image:               st.ImagePath,
+			IP:                  st.IP,
+			Installer:           st.InstallerType,
+			InstallerCompletion: st.InstallerCompletion,
+			InstallPhase:        st.InstallPhase,
+			Provisioned:         st.Provisioned,
+			UpdatedAt:           st.UpdatedAt,
+		}); err != nil {
+			return err
+		}
+		if !running {
+			return errNotRunning
+		}
+		return nil
+	}
+
 	fmt.Printf("Name:  %s\n", st.Name)
 	fmt.Printf("URI:   %s\n", st.LibvirtURI)
 	fmt.Printf("State: %s\n", stateText)
