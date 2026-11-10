@@ -176,6 +176,9 @@ func prepareOverlay(cfg *Config) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if err := os.MkdirAll(filepath.Dir(overlay), 0o755); err != nil {
+		return "", fmt.Errorf("create disk directory: %w", err)
+	}
 
 	cmd := exec.Command("qemu-img", "create",
 		"-f", diskFormatQCOW2,

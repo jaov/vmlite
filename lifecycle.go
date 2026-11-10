@@ -1,0 +1,330 @@
+package main
+
+import (
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+var errNotRunning = errors.New("VM is not running")
+
+func runVirsh(uri string, args ...string) (string, error) {
+	full := append([]string{"-c", uri}, args...)
+	out, err := exec.Command("virsh", full...).CombinedOutput()
+	return string(out), err
+}
+
+func domainStatus(uri, name string) (string, bool) {
+	out, err := runVirsh(uri, "domstate", name)
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(out), true
+}
+
+func domainUUID(uri, name string) string {
+	out, err := runVirsh(uri, "domuuid", name)
+	if err != nil {
+		return ""
+	}
+	fields := strings.Fields(out)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[len(fields)-1]
+}
+
+func resolveConnection(flagURI string) (string, error) {
+	uri := flagURI
+	if uri == "" {
+		uri = os.Getenv("VMLITE_CONNECT")
+	}
+	if uri != "" {
+		if err := ValidateConnection(uri); err != nil {
+			return "", err
+		}
+		return uri, nil
+	}
+	return RunPreflightChecks()
+}
+
+func upFlagSet() (*flag.FlagSet, *string, *string, *bool, *bool) {
+	fs := flag.NewFlagSet("up", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	connect := fs.String("connect", "", "libvirt connection URI")
+	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	recreate := fs.Bool("recreate", false, "destroy and recreate the VM")
+	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
+	return fs, connect, stateDir, recreate, dryRun
+}
+
+func runUp(args []string) error {
+	fs, connect, stateDir, recreate, dryRun := upFlagSet()
+	if err := fs.Parse(args); err != nil {
+		return errUsage
+	}
+	rest := fs.Args()
+	if len(rest) > 1 {
+		return errUsage
+	}
+	configPath := "vm.json"
+	if len(rest) == 1 {
+		configPath = rest[0]
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		return err
+	}
+	if err := CheckImageTools(cfg); err != nil {
+		return err
+	}
+
+	layout, err := newProjectLayout(configPath, *stateDir, cfg.Name)
+	if err != nil {
+		return err
+	}
+	applyProjectDefaults(cfg, layout)
+
+	configHash, err := hashConfig(cfg)
+	if err != nil {
+		return err
+	}
+
+	uri, err := resolveConnection(*connect)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Using libvirt connection: %s\n", uri)
+
+	st, err := loadState(layout.StateFile)
+	if err != nil {
+		return err
+	}
+	if st != nil {
+		if st.ConfigPath != layout.ConfigPath {
+			return fmt.Errorf("state %q belongs to config %q, not %q", layout.StateFile, st.ConfigPath, layout.ConfigPath)
+		}
+		if (st.ConfigHash != configHash || st.LibvirtURI != uri) && !*recreate {
+			if *dryRun {
+				fmt.Printf("Would recreate VM %q because its config or connection changed\n", cfg.Name)
+				return nil
+			}
+			return fmt.Errorf("config or connection changed for %q; run destroy or use --recreate", cfg.Name)
+		}
+	}
+
+	stateText, domainExists := domainStatus(uri, cfg.Name)
+
+	if *recreate && st != nil {
+		if *dryRun {
+			fmt.Printf("Would destroy and recreate VM %q\n", cfg.Name)
+			return nil
+		}
+		if err := destroyState(st, layout, true, false); err != nil {
+			return err
+		}
+		st = nil
+		domainExists = false
+	}
+
+	if st == nil {
+		if domainExists {
+			return fmt.Errorf("domain %q already exists but is not managed by vmlite (no state at %s)", cfg.Name, layout.StateFile)
+		}
+		if *dryRun {
+			fmt.Printf("Would create VM %q via %s\n", cfg.Name, uri)
+			return nil
+		}
+		if err := os.MkdirAll(layout.AssetDir, 0o755); err != nil {
+			return fmt.Errorf("create asset dir: %w", err)
+		}
+		if err := RunVirtInstall(cfg, uri); err != nil {
+			return err
+		}
+		st, err = newState(cfg, layout, uri, configHash, domainUUID(uri, cfg.Name))
+		if err != nil {
+			return err
+		}
+		if err := saveState(layout.StateFile, st); err != nil {
+			return fmt.Errorf("VM %q was created but state could not be written: %w", cfg.Name, err)
+		}
+		fmt.Printf("VM %q created successfully via %s\n", cfg.Name, uri)
+		return nil
+	}
+
+	if !domainExists {
+		if *dryRun {
+			fmt.Printf("Would recreate VM %q because its domain is missing\n", cfg.Name)
+			return nil
+		}
+		return fmt.Errorf("state exists for %q but its domain is missing; use --recreate", cfg.Name)
+	}
+
+	switch {
+	case strings.Contains(stateText, "running"):
+		if *dryRun {
+			fmt.Printf("VM %q is already running\n", cfg.Name)
+			return nil
+		}
+		fmt.Printf("VM %q is already running via %s\n", cfg.Name, uri)
+		return nil
+	case strings.Contains(stateText, "shut off"):
+		if *dryRun {
+			fmt.Printf("Would start VM %q\n", cfg.Name)
+			return nil
+		}
+		if _, err := runVirsh(uri, "start", cfg.Name); err != nil {
+			return fmt.Errorf("start VM %q: %w", cfg.Name, err)
+		}
+		st.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		if err := saveState(layout.StateFile, st); err != nil {
+			return fmt.Errorf("VM %q started but state update failed: %w", cfg.Name, err)
+		}
+		fmt.Printf("VM %q started via %s\n", cfg.Name, uri)
+		return nil
+	default:
+		return fmt.Errorf("VM %q is %q; expected running or shut off", cfg.Name, stateText)
+	}
+}
+
+func runStatus(args []string) error {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	if err := fs.Parse(args); err != nil {
+		return errUsage
+	}
+	rest := fs.Args()
+	if len(rest) > 1 {
+		return errUsage
+	}
+	configPath := "vm.json"
+	if len(rest) == 1 {
+		configPath = rest[0]
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		return err
+	}
+	layout, err := newProjectLayout(configPath, *stateDir, cfg.Name)
+	if err != nil {
+		return err
+	}
+	st, err := loadState(layout.StateFile)
+	if err != nil {
+		return err
+	}
+	if st == nil {
+		fmt.Printf("VM %q has not been created (no state at %s)\n", cfg.Name, layout.StateFile)
+		return errNotRunning
+	}
+
+	stateText, exists := domainStatus(st.LibvirtURI, st.Name)
+	if !exists {
+		fmt.Printf("VM %q: missing (state exists)\n", st.Name)
+		return errNotRunning
+	}
+	stateText = strings.TrimSpace(stateText)
+	fmt.Printf("Name:  %s\n", st.Name)
+	fmt.Printf("URI:   %s\n", st.LibvirtURI)
+	fmt.Printf("State: %s\n", stateText)
+	if st.DiskPath != "" {
+		fmt.Printf("Disk:  %s\n", st.DiskPath)
+	}
+	if st.ImagePath != "" {
+		fmt.Printf("Image: %s\n", st.ImagePath)
+	}
+	if strings.Contains(stateText, "running") {
+		return nil
+	}
+	return errNotRunning
+}
+
+func runDestroy(args []string) error {
+	fs := flag.NewFlagSet("destroy", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	force := fs.Bool("force", false, "destroy a running VM")
+	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
+	if err := fs.Parse(args); err != nil {
+		return errUsage
+	}
+	rest := fs.Args()
+	if len(rest) > 1 {
+		return errUsage
+	}
+	configPath := "vm.json"
+	if len(rest) == 1 {
+		configPath = rest[0]
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		return err
+	}
+	layout, err := newProjectLayout(configPath, *stateDir, cfg.Name)
+	if err != nil {
+		return err
+	}
+	st, err := loadState(layout.StateFile)
+	if err != nil {
+		return err
+	}
+	if st == nil {
+		return fmt.Errorf("no state for %q at %s", cfg.Name, layout.StateFile)
+	}
+	return destroyState(st, layout, *force, *dryRun)
+}
+
+func destroyState(st *State, layout projectLayout, force, dryRun bool) error {
+	stateText, exists := domainStatus(st.LibvirtURI, st.Name)
+	running := exists && strings.Contains(stateText, "running")
+	if running && !force {
+		return fmt.Errorf("VM %q is running; use --force to destroy it", st.Name)
+	}
+	if dryRun {
+		fmt.Printf("Would destroy VM %q via %s and remove its managed files\n", st.Name, st.LibvirtURI)
+		return nil
+	}
+
+	if running {
+		if _, err := runVirsh(st.LibvirtURI, "destroy", st.Name); err != nil {
+			return fmt.Errorf("destroy VM %q: %w", st.Name, err)
+		}
+	}
+	if exists {
+		if out, err := runVirsh(st.LibvirtURI, "undefine", st.Name, "--remove-all-storage", "--nvram"); err != nil {
+			if out2, err2 := runVirsh(st.LibvirtURI, "undefine", st.Name, "--remove-all-storage"); err2 != nil {
+				return fmt.Errorf("undefine VM %q: %w: %s", st.Name, err2, strings.TrimSpace(out+out2))
+			}
+		}
+	}
+
+	if st.DiskPath != "" {
+		_ = os.Remove(st.DiskPath)
+	}
+	if st.SeedPath != "" {
+		_ = os.Remove(st.SeedPath)
+	}
+	if st.AssetDir != "" && withinDir(filepath.Dir(layout.StateFile), st.AssetDir) {
+		_ = os.RemoveAll(st.AssetDir)
+	}
+	if st.PoolName != "" {
+		_, _ = runVirsh(st.LibvirtURI, "pool-destroy", st.PoolName)
+		_, _ = runVirsh(st.LibvirtURI, "pool-undefine", st.PoolName)
+	}
+	if err := os.Remove(layout.StateFile); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove state %q: %w", layout.StateFile, err)
+	}
+
+	fmt.Printf("VM %q destroyed\n", st.Name)
+	return nil
+}

@@ -176,6 +176,9 @@ func registerCleanup(t *testing.T, uri, name string) {
 			t.Logf("VMLITE_TEST_KEEP=1: leaving domain %s in place", name)
 			return
 		}
+		if _, err := virsh(t, uri, "dominfo", name); err != nil {
+			return
+		}
 		_, _ = virsh(t, uri, "destroy", name)
 		if out, err := virsh(t, uri, "undefine", name, "--remove-all-storage"); err != nil {
 			t.Logf("cleanup: undefine %s: %v: %s", name, err, strings.TrimSpace(out))
@@ -349,7 +352,7 @@ func TestCreateSystemVM(t *testing.T) {
 	verifyDomain(t, systemURI, name, mounts)
 }
 
-func TestDuplicateName(t *testing.T) {
+func TestUpIdempotent(t *testing.T) {
 	requireIntegration(t)
 
 	name := uniqueName()
@@ -358,14 +361,130 @@ func TestDuplicateName(t *testing.T) {
 	path := writeConfig(t, cfg)
 
 	if out, err := runVmlite(t, testURI, path); err != nil {
-		t.Fatalf("first create failed: %v\n%s", err, out)
+		t.Fatalf("first up failed: %v\n%s", err, out)
 	}
 	out, err := runVmlite(t, testURI, path)
-	if err == nil {
-		t.Fatalf("second create unexpectedly succeeded:\n%s", out)
+	if err != nil {
+		t.Fatalf("second up failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "already running") {
+		t.Fatalf("second up was not a no-op:\n%s", out)
 	}
 	if _, err := virsh(t, testURI, "dominfo", name); err != nil {
-		t.Fatalf("original domain is gone after failed duplicate create: %v", err)
+		t.Fatalf("domain is missing after idempotent up: %v", err)
+	}
+}
+
+func TestNameCollisionWithoutState(t *testing.T) {
+	requireIntegration(t)
+
+	name := uniqueName()
+	registerCleanup(t, testURI, name)
+	firstPath := writeConfig(t, noInstallConfig(name, nil))
+	if out, err := runVmlite(t, testURI, firstPath); err != nil {
+		t.Fatalf("first up failed: %v\n%s", err, out)
+	}
+
+	secondPath := writeConfig(t, noInstallConfig(name, nil))
+	out, err := runVmlite(t, testURI, secondPath)
+	if err == nil {
+		t.Fatalf("up succeeded without state for an existing domain:\n%s", out)
+	}
+	if !strings.Contains(out, "already exists") {
+		t.Fatalf("unexpected collision error:\n%s", out)
+	}
+	if _, err := virsh(t, testURI, "dominfo", name); err != nil {
+		t.Fatalf("original domain disappeared after collision: %v", err)
+	}
+}
+
+func TestConfigDrift(t *testing.T) {
+	requireIntegration(t)
+
+	name := uniqueName()
+	registerCleanup(t, testURI, name)
+	cfg := noInstallConfig(name, nil)
+	path := writeConfig(t, cfg)
+
+	if out, err := runVmlite(t, testURI, path); err != nil {
+		t.Fatalf("first up failed: %v\n%s", err, out)
+	}
+
+	cfg.Memory = 512
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal drifted config: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write drifted config: %v", err)
+	}
+
+	out, err := runVmlite(t, testURI, path)
+	if err == nil {
+		t.Fatalf("up accepted config drift:\n%s", out)
+	}
+	if !strings.Contains(out, "config or connection changed") {
+		t.Fatalf("unexpected drift error:\n%s", out)
+	}
+
+	out, err = runVmliteArgs(t, []string{"--connect", testURI, "--recreate", path}, nil)
+	if err != nil {
+		t.Fatalf("--recreate failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "created successfully") {
+		t.Fatalf("unexpected recreate output:\n%s", out)
+	}
+}
+
+func TestLifecycleStatusDestroy(t *testing.T) {
+	requireIntegration(t)
+
+	name := uniqueName()
+	registerCleanup(t, testURI, name)
+	path := writeConfig(t, noInstallConfig(name, nil))
+
+	if out, err := runVmlite(t, testURI, path); err != nil {
+		t.Fatalf("up failed: %v\n%s", err, out)
+	}
+	stateFile := filepath.Join(filepath.Dir(path), ".vmlite", name+".json")
+	if _, err := os.Stat(stateFile); err != nil {
+		t.Fatalf("state file was not written: %v", err)
+	}
+
+	out, err := runVmliteArgs(t, []string{"status", path}, nil)
+	if err != nil {
+		t.Fatalf("status failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "running") {
+		t.Fatalf("status did not report running:\n%s", out)
+	}
+
+	out, err = runVmliteArgs(t, []string{"destroy", path}, nil)
+	if err == nil {
+		t.Fatalf("destroy without --force succeeded:\n%s", out)
+	}
+	if !strings.Contains(out, "use --force") {
+		t.Fatalf("unexpected destroy safety error:\n%s", out)
+	}
+
+	out, err = runVmliteArgs(t, []string{"destroy", "--force", path}, nil)
+	if err != nil {
+		t.Fatalf("destroy --force failed: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(stateFile); !os.IsNotExist(err) {
+		t.Fatalf("state file still exists after destroy: %v", err)
+	}
+	if _, err := virsh(t, testURI, "dominfo", name); err == nil {
+		t.Fatalf("domain still exists after destroy")
+	}
+
+	out, err = runVmliteArgs(t, []string{"status", path}, nil)
+	if err == nil {
+		t.Fatalf("status succeeded after destroy:\n%s", out)
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok || exitErr.ExitCode() != 3 {
+		t.Fatalf("status exit = %v, want exit code 3", err)
 	}
 }
 

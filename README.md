@@ -29,10 +29,17 @@ Options:
 ## Usage
 
 ```bash
-vmlite                 # uses ./vm.json
-vmlite path/to/vm.json
+vmlite up                 # uses ./vm.json; `vmlite` is an alias for up
+vmlite up path/to/vm.json
 vmlite --connect qemu:///session vm.json
+vmlite status path/to/vm.json
+vmlite destroy --force path/to/vm.json
 ```
+
+Lifecycle state and generated VM assets live in `.vmlite/` next to the
+configuration file. `up` is idempotent: an unchanged running VM is a no-op,
+a stopped VM is started, and config/connection drift requires `--recreate`.
+`destroy` refuses to remove a running VM unless `--force` is passed.
 
 A cloud-image example:
 
