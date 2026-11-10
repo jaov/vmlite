@@ -227,6 +227,27 @@ rather than attached as a separate seed. `pkgsel` needs guest access to
 `deb.debian.org` (or a preseeded mirror) to install `openssh-server` and
 `sudo`.
 
+### Windows PE test
+
+Build a small WinPE ISO on Windows using the ADK + WinPE add-on:
+
+```powershell
+.\scripts\build-winpe.ps1 -Output .\artifacts\winpe-vmlite.iso
+```
+
+Then run the Linux test with the ISO and `mkfs.vfat` + `7z` available:
+
+```bash
+VMLITE_TEST_WINPE=1 \
+VMLITE_TEST_WINPE_ISO=/artifacts/winpe-vmlite.iso \
+  go test -tags integration -run TestWindowsPEBoot -v ./...
+```
+
+`scripts/winpe/startnet.cmd` writes a marker to a 64 MiB FAT disk and calls
+`wpeutil shutdown`. The test waits for the domain to power off, extracts the
+marker with `7z`, and checks its contents. It verifies Windows boot and
+media/command plumbing without requiring a full Windows installation.
+
 FreeBSD notes:
 
 - The BASIC-CLOUDINIT image performs a first-boot `pkg upgrade` and reboots

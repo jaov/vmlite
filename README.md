@@ -126,6 +126,31 @@ automatically. The default kickstart installs the Fedora Server environment,
 creates the SSH user, installs the generated key with `sshkey`, enables sshd,
 and grants NOPASSWD sudo.
 
+### Windows PE boot tests
+
+Windows client ISOs are too large for the default CI disk budget, so the first
+Windows target is a small WinPE image built from the Windows ADK:
+
+```powershell
+# On an elevated Windows machine with the ADK + WinPE add-on:
+.\scripts\build-winpe.ps1 -Output .\artifacts\winpe-vmlite.iso
+```
+
+The custom `scripts/winpe/startnet.cmd` initializes WinPE, formats the second
+disk, writes `vmlite-winpe-ok.txt`, and powers the VM off. The Linux test then
+verifies the marker:
+
+```bash
+VMLITE_TEST_WINPE=1 \
+VMLITE_TEST_WINPE_ISO=/artifacts/winpe-vmlite.iso \
+  go test -tags integration -run TestWindowsPEBoot -v ./...
+```
+
+This validates Windows boot, CD-ROM attachment, and the same plan/step command
+primitives used elsewhere. It does not exercise Windows Setup or SSH
+provisioning; those need a full Windows evaluation ISO and a larger disk,
+for example 30–64 GiB.
+
 Debian uses preseed:
 
 ```json
