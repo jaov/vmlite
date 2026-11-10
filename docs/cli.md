@@ -21,6 +21,18 @@ vmlite up --connect qemu:///system vm.json
 The shorthand `vmlite --connect qemu:///system vm.json` also works because it
 is an implicit `up`.
 
+## Help
+
+```bash
+vmlite help
+vmlite help up
+vmlite up --help
+vmlite --help
+```
+
+Command help is rendered from the actual flag definitions, so options and
+defaults match the binary. Flags accept either `-name` or `--name`.
+
 ## Exit codes
 
 | Code | Meaning |

@@ -93,6 +93,7 @@ vmlite validate vm.json
 | `validate` | validate config and local paths without changes |
 | `install` | install host dependencies and vmlite |
 | `doctor` | check host readiness |
+| `help` | show top-level or command-specific help |
 
 See [docs/cli.md](docs/cli.md) for flags, examples, JSON output, and exit
 codes.

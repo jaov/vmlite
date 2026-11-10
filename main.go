@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-var errUsage = errors.New("usage: vmlite [up|provision|status|destroy|validate|install|doctor] [options] [config.json]")
+var errUsage = errors.New("usage: vmlite [up|provision|status|destroy|validate|install|doctor|help] [options] [config.json]")
 
 func main() {
 	err := dispatch(os.Args[1:])
@@ -26,6 +26,18 @@ func main() {
 func dispatch(args []string) error {
 	if len(args) == 0 {
 		return runUp(nil)
+	}
+	if args[0] == "help" {
+		return runHelp(args[1:])
+	}
+	if args[0] == "-h" || args[0] == "--help" {
+		return runHelp(nil)
+	}
+	if hasHelpFlag(args) {
+		if cmd, ok := lookupCommand(args[0]); ok {
+			return runHelp([]string{cmd.Name})
+		}
+		return runHelp([]string{"up"})
 	}
 	switch args[0] {
 	case "up":

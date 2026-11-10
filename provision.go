@@ -501,12 +501,17 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 	return steps.Run(context.Background(), runner, os.Stdout)
 }
 
-func runProvision(args []string) error {
+func provisionFlagSet() (*flag.FlagSet, *string, *bool, *bool, *time.Duration) {
 	fs := newStateFlagSet("provision")
 	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
 	force := fs.Bool("force", false, "rerun once-provisioners")
 	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
 	timeout := fs.Duration("timeout", 0, "maximum wait for guest readiness (default: 5m, or 30m for SSH-completing installers)")
+	return fs, stateDir, force, dryRun, timeout
+}
+
+func runProvision(args []string) error {
+	fs, stateDir, force, dryRun, timeout := provisionFlagSet()
 	configPath, err := parseConfigArgs(fs, args)
 	if err != nil {
 		return err

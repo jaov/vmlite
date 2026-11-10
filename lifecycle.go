@@ -264,11 +264,16 @@ func writeStatusJSON(w io.Writer, status statusJSON) error {
 	return enc.Encode(status)
 }
 
-func runStatus(args []string) error {
+func statusFlagSet() (*flag.FlagSet, *string, *bool) {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
 	jsonOut := fs.Bool("json", false, "print machine-readable JSON")
+	return fs, stateDir, jsonOut
+}
+
+func runStatus(args []string) error {
+	fs, stateDir, jsonOut := statusFlagSet()
 	if err := fs.Parse(args); err != nil {
 		return errUsage
 	}
@@ -391,12 +396,17 @@ func runStatus(args []string) error {
 	return errNotRunning
 }
 
-func runDestroy(args []string) error {
+func destroyFlagSet() (*flag.FlagSet, *string, *bool, *bool) {
 	fs := flag.NewFlagSet("destroy", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
 	force := fs.Bool("force", false, "destroy a running VM")
 	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
+	return fs, stateDir, force, dryRun
+}
+
+func runDestroy(args []string) error {
+	fs, stateDir, force, dryRun := destroyFlagSet()
 	if err := fs.Parse(args); err != nil {
 		return errUsage
 	}
