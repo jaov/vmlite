@@ -121,6 +121,7 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"provisioner both sources", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "path": "/tmp/a", "inline": "true"}]}`, "exactly one of path or inline"},
 		{"provisioner without source", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell"}]}`, "exactly one of path or inline"},
 		{"provisioner bad run", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true", "run": "sometimes"}]}`, "run must be"},
+		{"provisioner bad type", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "ansible", "inline": "true"}]}`, "type must be"},
 		{"provisioner user network", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "network": {"mode": "user"}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "guest-visible network"},
 		{"installer on cloud image", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x", "installer": {"type": "ubuntu_autoinstall"}}, "disk": {"size": 5}}`, "source.installer requires"},
 		{"unknown installer", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso", "installer": {"type": "nope"}}, "disk": {"size": 5}}`, "unsupported installer.type"},
@@ -298,6 +299,24 @@ func TestLoadConfigProvisioners(t *testing.T) {
 	}
 	if len(cfg.Provisioners) != 2 || cfg.Provisioners[1].Run != "always" {
 		t.Fatalf("Provisioners = %+v", cfg.Provisioners)
+	}
+}
+
+func TestLoadConfigPowerShellProvisioner(t *testing.T) {
+	path := writeConfigFile(t, `{
+		"name": "win",
+		"memory": 4096,
+		"cpus": 2,
+		"source": {"type": "cloud_image", "path": "/tmp/base.qcow2"},
+		"disk": {"size": 20},
+		"provisioners": [{"type": "powershell", "inline": "Write-Output hi"}]
+	}`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if len(cfg.Provisioners) != 1 || cfg.Provisioners[0].Type != "powershell" {
+		t.Fatalf("provisioners = %+v", cfg.Provisioners)
 	}
 }
 

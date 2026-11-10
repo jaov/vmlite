@@ -56,6 +56,16 @@ a stopped VM is started, and config/connection drift requires `--recreate`.
 ]
 ```
 
+- `type: "shell"` runs `bash -s` with `sudo -n` for non-root users.
+- `type: "powershell"` runs `powershell -NoProfile -NonInteractive -Command -`
+  as the SSH user without sudo, for Windows guests:
+
+```json
+"provisioners": [
+  { "type": "powershell", "inline": "Set-Content C:\\vmlite-ok.txt 'ready'" }
+]
+```
+
 - `up` generates an ed25519 key under `.vmlite/`, injects the public key through
   a NoCloud `vendor-data` cloud-config, waits for the NAT guest IP and SSH, then
   runs the provisioners as root.

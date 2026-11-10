@@ -146,6 +146,7 @@ func waitForSSH(ctx context.Context, runner *plan.SSHRunner, timeout time.Durati
 type shellStep struct {
 	desc      string
 	id        string
+	typ       string
 	script    []byte
 	hash      string
 	run       string
@@ -171,10 +172,18 @@ func (s *shellStep) Check(ctx context.Context, r plan.Runner) (bool, error) {
 }
 
 func (s *shellStep) Apply(ctx context.Context, r plan.Runner) error {
+	name := "bash"
+	args := []string{"-s"}
+	sudo := s.runner.User != "root"
+	if s.typ == "powershell" {
+		name = "powershell"
+		args = []string{"-NoProfile", "-NonInteractive", "-Command", "-"}
+		sudo = false
+	}
 	if err := s.runner.Run(ctx, plan.Command{
-		Name:  "bash",
-		Args:  []string{"-s"},
-		Sudo:  s.runner.User != "root",
+		Name:  name,
+		Args:  args,
+		Sudo:  sudo,
 		Stdin: bytes.NewReader(s.script),
 	}); err != nil {
 		return err
@@ -437,9 +446,14 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 		if run == "" {
 			run = "once"
 		}
+		typ := p.Type
+		if typ == "" {
+			typ = "shell"
+		}
 		steps = append(steps, &shellStep{
-			desc:      fmt.Sprintf("shell provisioner %s", id),
+			desc:      fmt.Sprintf("%s provisioner %s", typ, id),
 			id:        id,
+			typ:       typ,
 			script:    script,
 			hash:      hex.EncodeToString(sum[:]),
 			run:       run,

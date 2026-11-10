@@ -185,6 +185,46 @@ func TestShellStepRootSkipsSudo(t *testing.T) {
 	}
 }
 
+func TestPowerShellStep(t *testing.T) {
+	binDir := t.TempDir()
+	logPath := filepath.Join(binDir, "ssh.log")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + logPath + "\n/bin/cat >/dev/null\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(binDir, "ssh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	state := &State{Version: 1, Name: "win"}
+	runner := &plan.SSHRunner{Host: "192.0.2.10", User: "Administrator", Key: "/tmp/key"}
+	step := &shellStep{
+		desc:      "powershell",
+		id:        "inline-0",
+		typ:       "powershell",
+		script:    []byte("Write-Output 'hi'\n"),
+		hash:      "abc",
+		run:       "once",
+		state:     state,
+		stateFile: filepath.Join(t.TempDir(), "state.json"),
+		runner:    runner,
+	}
+	if err := step.Apply(context.Background(), runner); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read ssh log: %v", err)
+	}
+	log := string(data)
+	for _, want := range []string{"powershell", "-NoProfile", "-NonInteractive", "-Command"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("ssh log missing %q:\n%s", want, log)
+		}
+	}
+	if strings.Contains(log, "sudo") {
+		t.Fatalf("PowerShell step should not use sudo:\n%s", log)
+	}
+}
+
 func TestProvisionShellStep(t *testing.T) {
 	binDir := t.TempDir()
 	script := "#!/bin/sh\n/bin/cat >/dev/null\nexit 0\n"

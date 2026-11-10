@@ -341,9 +341,9 @@ func (c *Config) Validate() error {
 	}
 	for i, p := range c.Provisioners {
 		switch p.Type {
-		case "", "shell":
+		case "", "shell", "powershell":
 		default:
-			return fmt.Errorf("provisioners[%d].type must be %q", i, "shell")
+			return fmt.Errorf("provisioners[%d].type must be %q or %q", i, "shell", "powershell")
 		}
 		hasPath := strings.TrimSpace(p.Path) != ""
 		hasInline := p.Inline != ""
