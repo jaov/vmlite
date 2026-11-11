@@ -62,7 +62,7 @@ func TestUbuntuAutoinstall(t *testing.T) {
 	}
 
 	name := uniqueName()
-	for _, pool := range []string{filepath.Base(filepath.Dir(iso)), name} {
+	for _, pool := range []string{filepath.Base(filepath.Dir(iso)), name, filepath.Base(workDir)} {
 		if _, err := virsh(t, systemURI, "pool-info", pool); err == nil {
 			continue
 		}
