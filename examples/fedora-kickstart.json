@@ -1,0 +1,18 @@
+{
+  "name": "fedora-auto",
+  "memory": 2048,
+  "cpus": 2,
+  "os_variant": "fedora42",
+  "firmware": "bios",
+  "source": {
+    "type": "iso",
+    "path": "/isos/Fedora-Server-dvd-x86_64-42-1.1.iso",
+    "installer": { "type": "fedora_kickstart" }
+  },
+  "disk": { "size": 8 },
+  "network": { "mode": "default" },
+  "graphics": { "type": "vnc", "listen": "127.0.0.1" },
+  "provisioners": [
+    { "type": "shell", "inline": "dnf install -y nginx" }
+  ]
+}

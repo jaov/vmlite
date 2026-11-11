@@ -106,6 +106,7 @@ vmlite validate vm.json
 | `list` | list managed VMs in the state directory |
 | `destroy` | remove the VM and managed files |
 | `validate` | validate config and local paths without changes |
+| `schema` | print the vmlite JSON Schema |
 | `install` | install host dependencies and vmlite |
 | `doctor` | check host readiness |
 | `version` | print the vmlite version |
@@ -225,6 +226,8 @@ SHA-256 file, and publish a GitHub release.
 
 - [CLI reference](docs/cli.md)
 - [Configuration reference](docs/configuration.md)
+- [JSON Schema](schema/vmlite.schema.json)
+- [Example configurations](examples/)
 - [Installers and guest sources](docs/installers.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Testing guide](TESTING.md)

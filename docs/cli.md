@@ -289,6 +289,17 @@ vmlite validate vm.json
 # vm.json: valid
 ```
 
+### `vmlite schema`
+
+Print the JSON Schema for vmlite configuration files.
+
+```bash
+vmlite schema > vmlite.schema.json
+```
+
+Use it in editors for validation and autocomplete. The same schema is checked
+into `schema/vmlite.schema.json`.
+
 ### `vmlite install`
 
 Install host dependencies and the `vmlite` binary.

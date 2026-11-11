@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vmlite.dev/schema/vmlite.schema.json",
+  "title": "vmlite configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "memory", "cpus", "source", "disk"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "memory": { "type": "integer", "minimum": 1, "description": "Memory in MiB" },
+    "cpus": { "type": "integer", "minimum": 1 },
+    "os_variant": { "type": "string" },
+    "firmware": { "type": "string", "enum": ["bios", "uefi"] },
+    "secure_boot": { "type": "boolean" },
+    "tpm": { "$ref": "#/$defs/tpm" },
+    "source": { "$ref": "#/$defs/source" },
+    "disk": { "$ref": "#/$defs/disk" },
+    "mounts": { "type": "array", "items": { "$ref": "#/$defs/mount" } },
+    "network": { "$ref": "#/$defs/network" },
+    "graphics": { "$ref": "#/$defs/graphics" },
+    "autoconsole": { "type": "boolean" },
+    "extra_disks": { "type": "array", "items": { "$ref": "#/$defs/extra_disk" } },
+    "ssh": { "$ref": "#/$defs/ssh" },
+    "provisioners": { "type": "array", "items": { "$ref": "#/$defs/provisioner" } }
+  },
+  "$defs": {
+    "tpm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string", "enum": ["1.2", "2.0"] },
+        "backend": { "type": "string", "enum": ["emulator"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["none", "cloud_image", "install_tree", "iso", "disk", "pxe"]
+        },
+        "path": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+        "cache": { "type": "string" },
+        "cloud_init": { "type": "string" },
+        "extra_args": { "type": "string" },
+        "installer": { "$ref": "#/$defs/installer" }
+      }
+    },
+    "installer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ubuntu_autoinstall", "fedora_kickstart", "debian_preseed", "windows_autounattend"]
+        },
+        "config": { "type": "string" },
+        "inline": { "type": "string" },
+        "windows": { "$ref": "#/$defs/windows_installer" }
+      }
+    },
+    "windows_installer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "locale": { "type": "string" },
+        "input_locale": { "type": "string" },
+        "timezone": { "type": "string" },
+        "image_index": { "type": "integer", "minimum": 1 },
+        "admin_password": { "type": "string" }
+      }
+    },
+    "disk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "size": { "type": "integer", "minimum": 0, "description": "Size in GiB" },
+        "path": { "type": "string" },
+        "format": { "type": "string", "enum": ["auto", "qcow2", "raw"] },
+        "bus": { "type": "string", "enum": ["auto", "virtio", "sata", "scsi"] }
+      }
+    },
+    "mount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "target"],
+      "properties": {
+        "source": { "type": "string" },
+        "target": { "type": "string" },
+        "type": { "type": "string", "enum": ["9p", "none", "virtiofs"] }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string", "enum": ["auto", "default", "user", "bridge"] },
+        "bridge": { "type": "string" },
+        "model": { "type": "string" }
+      }
+    },
+    "graphics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["none", "vnc", "spice"] },
+        "listen": { "type": "string" }
+      }
+    },
+    "extra_disk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string" },
+        "device": { "type": "string", "enum": ["disk", "cdrom"] },
+        "format": { "type": "string", "enum": ["auto", "qcow2", "raw"] },
+        "readonly": { "type": "boolean" }
+      }
+    },
+    "ssh": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "user": { "type": "string" },
+        "key": { "type": "string" }
+      }
+    },
+    "provisioner": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["shell", "powershell"] },
+        "path": { "type": "string" },
+        "inline": { "type": "string" },
+        "run": { "type": "string", "enum": ["once", "always"] },
+        "uploads": { "type": "array", "items": { "$ref": "#/$defs/upload" } },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "oneOf": [
+        { "required": ["path"] },
+        { "required": ["inline"] }
+      ]
+    },
+    "upload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "target"],
+      "properties": {
+        "source": { "type": "string" },
+        "target": { "type": "string" }
+      }
+    }
+  }
+}

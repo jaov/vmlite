@@ -178,6 +178,14 @@ func commands() []command {
 			},
 		},
 		{
+			Name:    "schema",
+			Summary: "Print the JSON Schema for vmlite configs",
+			Usage:   "vmlite schema",
+			Examples: []string{
+				"vmlite schema > vmlite.schema.json",
+			},
+		},
+		{
 			Name:    "install",
 			Summary: "Install host dependencies and vmlite",
 			Usage:   "vmlite install [options]",

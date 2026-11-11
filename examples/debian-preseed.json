@@ -1,0 +1,18 @@
+{
+  "name": "debian-auto",
+  "memory": 2048,
+  "cpus": 2,
+  "os_variant": "debian12",
+  "firmware": "bios",
+  "source": {
+    "type": "iso",
+    "path": "/isos/debian-13.7.0-amd64-netinst.iso",
+    "installer": { "type": "debian_preseed" }
+  },
+  "disk": { "size": 5 },
+  "network": { "mode": "default" },
+  "graphics": { "type": "vnc", "listen": "127.0.0.1" },
+  "provisioners": [
+    { "type": "shell", "inline": "apt-get update && apt-get install -y nginx" }
+  ]
+}

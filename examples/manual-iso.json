@@ -1,0 +1,21 @@
+{
+  "name": "manual-openbsd",
+  "memory": 1024,
+  "cpus": 2,
+  "os_variant": "openbsd7.9",
+  "firmware": "bios",
+  "source": {
+    "type": "iso",
+    "path": "/isos/openbsd79.iso"
+  },
+  "disk": { "size": 8 },
+  "network": { "mode": "default" },
+  "graphics": { "type": "vnc", "listen": "127.0.0.1" },
+  "ssh": {
+    "user": "deploy",
+    "key": "/home/me/.ssh/id_ed25519"
+  },
+  "provisioners": [
+    { "type": "shell", "path": "./provision/openbsd-setup.sh" }
+  ]
+}

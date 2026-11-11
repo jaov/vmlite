@@ -1,0 +1,14 @@
+{
+  "name": "cloud-dev",
+  "memory": 2048,
+  "cpus": 2,
+  "os_variant": "ubuntu24.04",
+  "firmware": "bios",
+  "source": {
+    "type": "cloud_image",
+    "path": "/var/cache/vmlite/ubuntu-24.04.img"
+  },
+  "disk": { "size": 10, "format": "qcow2" },
+  "network": { "mode": "auto" },
+  "graphics": { "type": "none" }
+}

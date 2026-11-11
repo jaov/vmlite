@@ -2,6 +2,14 @@
 
 `vmlite` reads a JSON file, by default `vm.json`.
 
+The machine-readable schema is available with:
+
+```bash
+vmlite schema > vmlite.schema.json
+```
+
+Example configurations live in `examples/`.
+
 ## Minimal example
 
 ```json

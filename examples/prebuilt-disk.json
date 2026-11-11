@@ -1,0 +1,21 @@
+{
+  "name": "prebuilt-disk",
+  "memory": 2048,
+  "cpus": 2,
+  "os_variant": "debian12",
+  "firmware": "bios",
+  "source": {
+    "type": "disk",
+    "path": "/images/ubuntu-postgres.qcow2"
+  },
+  "disk": { "size": 20, "format": "qcow2" },
+  "network": { "mode": "default" },
+  "graphics": { "type": "none" },
+  "ssh": {
+    "user": "deploy",
+    "key": "/home/me/.ssh/id_ed25519"
+  },
+  "provisioners": [
+    { "type": "shell", "inline": "systemctl status postgresql" }
+  ]
+}

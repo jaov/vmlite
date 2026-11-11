@@ -1,0 +1,23 @@
+{
+  "name": "win11-auto",
+  "memory": 4096,
+  "cpus": 2,
+  "os_variant": "win11",
+  "firmware": "uefi",
+  "secure_boot": true,
+  "tpm": { "version": "2.0" },
+  "source": {
+    "type": "iso",
+    "path": "/isos/windows-11.iso",
+    "installer": {
+      "type": "windows_autounattend",
+      "windows": { "image_index": 1, "timezone": "UTC" }
+    }
+  },
+  "disk": { "size": 64, "format": "qcow2", "bus": "sata" },
+  "network": { "mode": "default" },
+  "graphics": { "type": "vnc", "listen": "127.0.0.1" },
+  "provisioners": [
+    { "type": "powershell", "inline": "Set-Content C:\\vmlite-ok.txt 'ready'" }
+  ]
+}

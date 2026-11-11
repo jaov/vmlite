@@ -1,0 +1,16 @@
+{
+  "name": "winpe",
+  "memory": 1024,
+  "cpus": 2,
+  "firmware": "bios",
+  "source": {
+    "type": "iso",
+    "path": "/artifacts/winpe-vmlite.iso"
+  },
+  "disk": { "size": 1 },
+  "network": { "mode": "default" },
+  "graphics": { "type": "vnc", "listen": "127.0.0.1" },
+  "extra_disks": [
+    { "path": "/tmp/winpe-marker.img", "device": "disk", "format": "raw" }
+  ]
+}

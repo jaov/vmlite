@@ -1,0 +1,23 @@
+{
+  "name": "uploads",
+  "memory": 2048,
+  "cpus": 2,
+  "os_variant": "ubuntu24.04",
+  "source": {
+    "type": "cloud_image",
+    "path": "/var/cache/vmlite/ubuntu-24.04.img"
+  },
+  "disk": { "size": 10 },
+  "network": { "mode": "default" },
+  "graphics": { "type": "none" },
+  "provisioners": [
+    {
+      "type": "shell",
+      "inline": "test -f /etc/app.conf && systemctl restart app",
+      "uploads": [
+        { "source": "./config/app.conf", "target": "/etc/app.conf" }
+      ],
+      "env": { "APP_ENV": "dev" }
+    }
+  ]
+}
