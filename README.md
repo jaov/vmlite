@@ -47,6 +47,14 @@ vmlite up                     # uses ./vm.json; `vmlite` is an alias for up
 vmlite up path/to/vm.json
 vmlite status path/to/vm.json
 vmlite status --json vm.json
+vmlite ssh vm.json
+vmlite ssh --command 'uname -a' vm.json
+vmlite scp ./app.conf /etc/app.conf vm.json
+vmlite list
+vmlite stop vm.json
+vmlite start vm.json
+vmlite restart vm.json
+vmlite console vm.json
 vmlite provision vm.json
 vmlite destroy --force vm.json
 ```
@@ -89,6 +97,13 @@ vmlite validate vm.json
 | `up` | create or start the VM (default command) |
 | `provision` | run or rerun provisioners; finish automated installers |
 | `status` | show VM, IP, installer, and provisioner state |
+| `start` | start a stopped VM |
+| `stop` | gracefully stop a running VM |
+| `restart` | reboot a running VM or start a stopped VM |
+| `ssh` | open a shell or run a guest command |
+| `scp` | copy a host file or directory into the guest |
+| `console` | attach to serial or print VNC details |
+| `list` | list managed VMs in the state directory |
 | `destroy` | remove the VM and managed files |
 | `validate` | validate config and local paths without changes |
 | `install` | install host dependencies and vmlite |
@@ -97,6 +112,23 @@ vmlite validate vm.json
 
 See [docs/cli.md](docs/cli.md) for flags, examples, JSON output, and exit
 codes.
+
+### Guest access
+
+Guest access uses the managed state IP and SSH key:
+
+```bash
+vmlite ssh vm.json
+vmlite ssh --command 'systemctl status nginx' vm.json
+vmlite scp ./app.conf /etc/app.conf vm.json
+vmlite scp --recursive ./assets /opt/assets vm.json
+vmlite console vm.json              # graphical details, or serial if no display
+vmlite console --type serial vm.json
+```
+
+SSH and scp require `qemu:///system` with a guest-visible network and a
+managed SSH key. `stop` uses ACPI shutdown and waits; `--force` destroys the VM
+if graceful shutdown times out.
 
 ## Provisioning
 

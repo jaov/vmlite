@@ -164,7 +164,95 @@ JSON output:
 `status` exits `3` when the VM is not running, missing, or not created. JSON is
 still emitted in those cases with `running: false` and a descriptive `state`.
 
-### `vmlite destroy`
+### `vmlite start`
+
+Start a stopped VM.
+
+```text
+vmlite start [--state-dir DIR] [--dry-run] [config.json]
+```
+
+### `vmlite stop`
+
+Gracefully stop a running VM with ACPI shutdown.
+
+```text
+vmlite stop [--state-dir DIR] [--timeout DURATION] [--force] [--dry-run] [config.json]
+```
+
+`--timeout` defaults to `2m`. If the guest does not stop in time, `stop` fails
+unless `--force` is passed; `--force` destroys the domain.
+
+### `vmlite restart`
+
+Reboot a running VM, or start a stopped VM.
+
+```text
+vmlite restart [--state-dir DIR] [--dry-run] [config.json]
+```
+
+### `vmlite ssh`
+
+Open an interactive shell or run one remote command.
+
+```text
+vmlite ssh [--state-dir DIR] [--user USER] [--command COMMAND] [--timeout DURATION] [--dry-run] [config.json]
+```
+
+- Resolves the guest IP from state and waits up to `--timeout` (default `30s`)
+  for IP and SSH readiness.
+- Uses the managed SSH key and user from state.
+- Requires `qemu:///system` with a guest-visible network.
+- `--command` runs non-interactively; otherwise an interactive shell is opened.
+
+Examples:
+
+```bash
+vmlite ssh vm.json
+vmlite ssh --command 'uname -a' vm.json
+vmlite ssh --user root vm.json
+```
+
+### `vmlite scp`
+
+Copy a host file or directory into the guest.
+
+```text
+vmlite scp [--state-dir DIR] [--user USER] [--timeout DURATION] [--recursive] [--dry-run] <local> <remote> [config.json]
+```
+
+Examples:
+
+```bash
+vmlite scp ./app.conf /etc/app.conf vm.json
+vmlite scp --recursive ./assets /opt/assets vm.json
+```
+
+### `vmlite console`
+
+Attach to the serial console or print graphical display details.
+
+```text
+vmlite console [--state-dir DIR] [--type auto|serial|vnc] [--dry-run] [config.json]
+```
+
+- `auto` prints VNC/SPICE details when a display exists, otherwise attaches to
+  the serial console.
+- `vnc` only prints the display and a `virt-viewer` hint.
+- `serial` attaches with `virsh console --force`.
+
+### `vmlite list`
+
+List managed VMs in a state directory.
+
+```text
+vmlite list [--state-dir DIR] [--json]
+```
+
+Defaults to `.vmlite` in the current directory. Human output includes name,
+state, IP, installer, phase, and provisioned count.
+
+
 
 Remove the VM and managed files.
 

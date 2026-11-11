@@ -62,6 +62,97 @@ func commands() []command {
 			},
 		},
 		{
+			Name:    "start",
+			Summary: "Start a stopped VM",
+			Usage:   "vmlite start [options] [config.json]",
+			Flags: func() *flag.FlagSet {
+				fs, _, _ := startFlagSet()
+				return fs
+			},
+			Examples: []string{
+				"vmlite start vm.json",
+			},
+		},
+		{
+			Name:    "stop",
+			Summary: "Gracefully stop a running VM",
+			Usage:   "vmlite stop [options] [config.json]",
+			Flags: func() *flag.FlagSet {
+				fs, _, _, _, _ := stopFlagSet()
+				return fs
+			},
+			Examples: []string{
+				"vmlite stop vm.json",
+				"vmlite stop --timeout 5m vm.json",
+				"vmlite stop --force vm.json",
+			},
+		},
+		{
+			Name:    "restart",
+			Summary: "Reboot a running VM or start a stopped VM",
+			Usage:   "vmlite restart [options] [config.json]",
+			Flags: func() *flag.FlagSet {
+				fs, _, _ := restartFlagSet()
+				return fs
+			},
+			Examples: []string{
+				"vmlite restart vm.json",
+			},
+		},
+		{
+			Name:    "ssh",
+			Summary: "Open a shell or run a command in the guest",
+			Usage:   "vmlite ssh [options] [config.json]",
+			Flags: func() *flag.FlagSet {
+				fs, _, _, _, _, _ := sshFlagSet()
+				return fs
+			},
+			Examples: []string{
+				"vmlite ssh vm.json",
+				"vmlite ssh --command 'uname -a' vm.json",
+			},
+		},
+		{
+			Name:    "scp",
+			Summary: "Copy a host file into the guest",
+			Usage:   "vmlite scp [options] <local> <remote> [config.json]",
+			Flags: func() *flag.FlagSet {
+				fs, _, _, _, _, _ := scpFlagSet()
+				return fs
+			},
+			Examples: []string{
+				"vmlite scp ./app.conf /etc/app.conf vm.json",
+				"vmlite scp --recursive ./assets /opt/assets vm.json",
+			},
+		},
+		{
+			Name:    "console",
+			Summary: "Attach to serial or print graphical details",
+			Usage:   "vmlite console [options] [config.json]",
+			Flags: func() *flag.FlagSet {
+				fs, _, _, _ := consoleFlagSet()
+				return fs
+			},
+			Examples: []string{
+				"vmlite console vm.json",
+				"vmlite console --type vnc vm.json",
+				"vmlite console --type serial vm.json",
+			},
+		},
+		{
+			Name:    "list",
+			Summary: "List managed VMs in the state directory",
+			Usage:   "vmlite list [options]",
+			Flags: func() *flag.FlagSet {
+				fs, _, _ := listFlagSet()
+				return fs
+			},
+			Examples: []string{
+				"vmlite list",
+				"vmlite list --json",
+			},
+		},
+		{
 			Name:    "destroy",
 			Summary: "Remove the VM and managed files",
 			Usage:   "vmlite destroy [options] [config.json]",
