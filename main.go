@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-var errUsage = errors.New("usage: vmlite [up|provision|status|start|stop|restart|ssh|scp|console|list|destroy|validate|install|doctor|help] [options] [config.json]")
+var errUsage = errors.New("usage: vmlite [up|provision|status|start|stop|restart|ssh|scp|console|list|destroy|validate|install|doctor|version|help] [options] [config.json]")
 
 func main() {
 	err := dispatch(os.Args[1:])
@@ -32,6 +32,9 @@ func dispatch(args []string) error {
 	}
 	if args[0] == "-h" || args[0] == "--help" {
 		return runHelp(nil)
+	}
+	if args[0] == "--version" || args[0] == "-version" {
+		return runVersion(args[1:])
 	}
 	if hasHelpFlag(args) {
 		if cmd, ok := lookupCommand(args[0]); ok {
@@ -68,6 +71,8 @@ func dispatch(args []string) error {
 		return runInstall(args[1:])
 	case "doctor":
 		return runDoctor(args[1:])
+	case "version":
+		return runVersion(args[1:])
 	default:
 		// Preserve the original `vmlite [config]` form as an implicit up.
 		return runUp(args)

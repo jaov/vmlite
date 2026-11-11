@@ -28,6 +28,8 @@ vmlite help
 vmlite help up
 vmlite up --help
 vmlite --help
+vmlite version
+vmlite --version
 ```
 
 Command help is rendered from the actual flag definitions, so options and
@@ -308,3 +310,18 @@ vmlite doctor [--prefix DIR]
 
 Checks KVM, libvirt, `virt-install`, ISO tools, SSH tools, the default network,
 and the installed `vmlite` binary.
+
+### `vmlite version`
+
+Print the vmlite version.
+
+```text
+vmlite version
+vmlite --version
+```
+
+Release builds set the version with:
+
+```bash
+go build -ldflags "-X main.version=v0.1.0" -o vmlite .
+```

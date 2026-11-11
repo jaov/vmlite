@@ -204,6 +204,15 @@ func commands() []command {
 			},
 		},
 		{
+			Name:    "version",
+			Summary: "Print the vmlite version",
+			Usage:   "vmlite version",
+			Examples: []string{
+				"vmlite version",
+				"vmlite --version",
+			},
+		},
+		{
 			Name:    "help",
 			Summary: "Show help for a command",
 			Usage:   "vmlite help [command]",

@@ -1,6 +1,8 @@
 # Installers and guest sources
 
 `vmlite` supports cloud images, prebuilt disks, and unattended ISO installers.
+Cloud images, installer ISOs, and imported disks can use `source.url` with a
+required `sha256` and optional cache.
 
 ## Linux cloud images
 

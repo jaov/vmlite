@@ -108,6 +108,7 @@ vmlite validate vm.json
 | `validate` | validate config and local paths without changes |
 | `install` | install host dependencies and vmlite |
 | `doctor` | check host readiness |
+| `version` | print the vmlite version |
 | `help` | show top-level or command-specific help |
 
 See [docs/cli.md](docs/cli.md) for flags, examples, JSON output, and exit
@@ -135,19 +136,37 @@ if graceful shutdown times out.
 ```json
 "ssh": { "user": "vmlite" },
 "provisioners": [
-  { "type": "shell", "path": "./provision/postgres.sh", "run": "once" },
-  { "type": "shell", "inline": "echo refreshed >> /var/tmp/log", "run": "always" },
-  { "type": "powershell", "inline": "Set-Content C:\\vmlite-ok.txt 'ready'" }
+  {
+    "type": "shell",
+    "path": "./provision/postgres.sh",
+    "run": "once",
+    "uploads": [
+      { "source": "./config/app.conf", "target": "/etc/app.conf" }
+    ],
+    "env": { "APP_ENV": "dev" }
+  },
+  { "type": "shell", "inline": "echo refreshed >> /var/tmp/log", "run": "always" }
 ]
 ```
 
 - `shell` runs `bash -s` with `sudo -n` for non-root users.
 - `powershell` runs `powershell -NoProfile -NonInteractive -Command -` without
-  sudo.
+  sudo. Use it for Windows guests.
 - `once` records the script SHA-256 and skips unchanged scripts.
 - `always` reruns on every `vmlite provision`.
 - `--force` reruns once-provisioners.
 - `--timeout 45m` overrides guest readiness waits.
+- `uploads` copies files into the guest before the script runs.
+- `env` reaches shell provisioners through `env` and is emitted as
+  `$env:NAME = 'value'` for PowerShell.
+
+Windows example:
+
+```json
+"provisioners": [
+  { "type": "powershell", "inline": "Set-Content C:\\vmlite-ok.txt 'ready'" }
+]
+```
 
 ## Sources and installers
 
@@ -184,6 +203,23 @@ have **not** been exercised end to end on this host. A practical Windows guest
 needs a 30–64 GiB disk, which this development environment does not have. The
 Windows integration tests are opt-in and skip when media or space is
 unavailable.
+
+## Version and releases
+
+```bash
+vmlite version
+vmlite --version
+```
+
+Local builds can set the version explicitly:
+
+```bash
+go build -ldflags "-X main.version=v0.1.0" -o vmlite .
+```
+
+CI runs formatting, `go vet`, `go test -race`, and a build on every push and
+pull request. Tags matching `v*` build `vmlite-linux-amd64`, generate a
+SHA-256 file, and publish a GitHub release.
 
 ## Documentation
 

@@ -74,7 +74,9 @@ Common fields:
 }
 ```
 
-### Cloud image URLs and cache
+### URL media and cache
+
+Cloud images, installer ISOs, and imported disks can use `source.url`:
 
 ```json
 "source": {
@@ -86,10 +88,32 @@ Common fields:
 }
 ```
 
-- URL images require `sha256`.
-- Cached images are verified on every use.
+The same fields work for installer/media sources:
+
+```json
+"source": {
+  "type": "iso",
+  "url": "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.7.0-amd64-netinst.iso",
+  "sha256": "<64-character digest>",
+  "cache": "/var/tmp/vmlite-cache",
+  "installer": { "type": "debian_preseed" }
+}
+```
+
+```json
+"source": {
+  "type": "disk",
+  "url": "https://example.invalid/ubuntu-postgres.qcow2",
+  "sha256": "<64-character digest>",
+  "cache": "/var/tmp/vmlite-cache"
+}
+```
+
+- URL media requires `sha256`.
+- Local media with `sha256` is verified on use.
+- Cached media is verified on every use.
 - Default cache is `~/.cache/vmlite`.
-- `vmlite up --offline` refuses to download a missing image.
+- `vmlite up --offline` refuses to download missing media.
 - `destroy` keeps the cache.
 
 ## Disk
@@ -173,7 +197,15 @@ a bridge, not `user`.
 ```json
 "ssh": { "user": "vmlite", "key": "/home/me/.ssh/id_ed25519" },
 "provisioners": [
-  { "type": "shell", "path": "./provision/setup.sh", "run": "once" },
+  {
+    "type": "shell",
+    "path": "./provision/setup.sh",
+    "run": "once",
+    "uploads": [
+      { "source": "./config/app.conf", "target": "/etc/app.conf" }
+    ],
+    "env": { "APP_ENV": "dev", "RETRIES": "3" }
+  },
   { "type": "shell", "inline": "echo hi >> /var/tmp/log", "run": "always" }
 ]
 ```
@@ -184,6 +216,12 @@ a bridge, not `user`.
 - `ssh.user` defaults to `vmlite`, or `Administrator` for Windows.
 - `run`: `once` (default) or `always`.
 - `type`: `shell` (default) or `powershell`.
+- `uploads` copies host files into the guest before the script. Sources are
+  relative to the config file; directories are not supported yet.
+- `env` is passed through the remote environment for shell provisioners and
+  emitted as `$env:NAME = 'value'` lines for PowerShell.
+- The `once` hash includes script contents, environment values, and uploaded
+  file contents.
 
 `shell` uses `bash -s` with `sudo -n` for non-root users. `powershell` uses
 `powershell -NoProfile -NonInteractive -Command -` without sudo.
