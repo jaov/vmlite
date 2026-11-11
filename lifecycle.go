@@ -94,6 +94,11 @@ func runUp(args []string) error {
 	if err != nil {
 		return err
 	}
+	lock, err := acquireProjectLock(layout)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	applyProjectDefaults(cfg, layout)
 
 	configHash, err := hashConfig(cfg)
@@ -427,6 +432,11 @@ func runDestroy(args []string) error {
 	if err != nil {
 		return err
 	}
+	lock, err := acquireProjectLock(layout)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	st, err := loadState(layout.StateFile)
 	if err != nil {
 		return err

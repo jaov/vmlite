@@ -658,6 +658,11 @@ func runProvision(args []string) error {
 	if err != nil {
 		return err
 	}
+	lock, err := acquireProjectLock(layout)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	st, err := loadState(layout.StateFile)
 	if err != nil {
 		return err

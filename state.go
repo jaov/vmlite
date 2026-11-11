@@ -55,6 +55,7 @@ type projectLayout struct {
 	ConfigPath string
 	StateDir   string
 	StateFile  string
+	LockFile   string
 	AssetDir   string
 }
 
@@ -76,6 +77,7 @@ func newProjectLayout(configPath, stateDirFlag, name string) (projectLayout, err
 		ConfigPath: absConfig,
 		StateDir:   stateDir,
 		StateFile:  filepath.Join(stateDir, name+".json"),
+		LockFile:   filepath.Join(stateDir, name+".lock"),
 		AssetDir:   filepath.Join(stateDir, name),
 	}, nil
 }

@@ -14,23 +14,29 @@ func powerStateFlagSet(name string) (*flag.FlagSet, *string, *bool) {
 	return fs, stateDir, dryRun
 }
 
-func loadPowerState(configPath, stateDir string) (projectLayout, *State, error) {
+func loadPowerState(configPath, stateDir string) (projectLayout, *State, *projectLock, error) {
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
-		return projectLayout{}, nil, err
+		return projectLayout{}, nil, nil, err
 	}
 	layout, err := newProjectLayout(configPath, stateDir, cfg.Name)
 	if err != nil {
-		return projectLayout{}, nil, err
+		return projectLayout{}, nil, nil, err
+	}
+	lock, err := acquireProjectLock(layout)
+	if err != nil {
+		return projectLayout{}, nil, nil, err
 	}
 	st, err := loadState(layout.StateFile)
 	if err != nil {
-		return projectLayout{}, nil, err
+		lock.Close()
+		return projectLayout{}, nil, nil, err
 	}
 	if st == nil {
-		return projectLayout{}, nil, fmt.Errorf("no state for %q at %s", cfg.Name, layout.StateFile)
+		lock.Close()
+		return projectLayout{}, nil, nil, fmt.Errorf("no state for %q at %s", cfg.Name, layout.StateFile)
 	}
-	return layout, st, nil
+	return layout, st, lock, nil
 }
 
 func startFlagSet() (*flag.FlagSet, *string, *bool) {
@@ -43,10 +49,11 @@ func runStart(args []string) error {
 	if err != nil {
 		return err
 	}
-	layout, st, err := loadPowerState(configPath, *stateDir)
+	layout, st, lock, err := loadPowerState(configPath, *stateDir)
 	if err != nil {
 		return err
 	}
+	defer lock.Close()
 	text, exists := domainStatus(st.LibvirtURI, st.Name)
 	if !exists {
 		return fmt.Errorf("VM %q is missing", st.Name)
@@ -88,10 +95,11 @@ func runStop(args []string) error {
 	if err != nil {
 		return err
 	}
-	layout, st, err := loadPowerState(configPath, *stateDir)
+	layout, st, lock, err := loadPowerState(configPath, *stateDir)
 	if err != nil {
 		return err
 	}
+	defer lock.Close()
 	text, exists := domainStatus(st.LibvirtURI, st.Name)
 	if !exists {
 		return fmt.Errorf("VM %q is missing", st.Name)
@@ -133,10 +141,11 @@ func runRestart(args []string) error {
 	if err != nil {
 		return err
 	}
-	layout, st, err := loadPowerState(configPath, *stateDir)
+	layout, st, lock, err := loadPowerState(configPath, *stateDir)
 	if err != nil {
 		return err
 	}
+	defer lock.Close()
 	text, exists := domainStatus(st.LibvirtURI, st.Name)
 	if !exists {
 		return fmt.Errorf("VM %q is missing", st.Name)
