@@ -102,8 +102,12 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"cloud image no disk size", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 0}}`, "disk.size"},
 		{"install tree no url", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "install_tree"}, "disk": {"size": 5}}`, "source.url is required"},
 		{"install tree cloud init", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "install_tree", "url": "https://example.invalid", "cloud_init": "/tmp/u"}, "disk": {"size": 5}}`, "not valid"},
-		{"iso no path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso"}, "disk": {"size": 5}}`, "source.path is required"},
-		{"disk no path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "disk"}, "disk": {"size": 5}}`, "source.path is required"},
+		{"iso no path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso"}, "disk": {"size": 5}}`, "requires exactly one"},
+		{"iso url no sha", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "url": "https://example.invalid/x.iso"}, "disk": {"size": 5}}`, "sha256"},
+		{"iso path and url", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso", "url": "https://example.invalid/x.iso", "sha256": "` + strings.Repeat("a", 64) + `"}, "disk": {"size": 5}}`, "exactly one"},
+		{"iso cache without url", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso", "cache": "/tmp/cache"}, "disk": {"size": 5}}`, "cache requires"},
+		{"disk no path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "disk"}, "disk": {"size": 5}}`, "requires exactly one"},
+		{"disk url no sha", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "disk", "url": "https://example.invalid/x.qcow2"}, "disk": {"size": 5}}`, "sha256"},
 		{"disk with disk path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "disk", "path": "/tmp/x"}, "disk": {"size": 5, "path": "/tmp/y"}}`, "disk.path is not used"},
 		{"pxe with path", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "pxe", "path": "/tmp/x"}, "disk": {"size": 5}}`, "does not accept path"},
 		{"bad firmware", base(`, "firmware": "coreboot"`), "firmware must be"},
@@ -320,6 +324,31 @@ func TestWindowsGeneratedAutounattend(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("password mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestLoadConfigMediaURLs(t *testing.T) {
+	sha := strings.Repeat("a", 64)
+	for _, sourceType := range []string{sourceISO, sourceDisk} {
+		path := writeConfigFile(t, `{
+			"name": "media",
+			"memory": 1024,
+			"cpus": 1,
+			"source": {
+				"type": "`+sourceType+`",
+				"url": "https://example.invalid/media",
+				"sha256": "`+sha+`",
+				"cache": "/tmp/vmlite-media-cache"
+			},
+			"disk": {"size": 5}
+		}`)
+		cfg, err := LoadConfig(path)
+		if err != nil {
+			t.Fatalf("%s: LoadConfig: %v", sourceType, err)
+		}
+		if cfg.Source.URL == "" || cfg.Source.SHA256 != sha || cfg.Source.Cache == "" {
+			t.Fatalf("%s: source = %+v", sourceType, cfg.Source)
+		}
 	}
 }
 

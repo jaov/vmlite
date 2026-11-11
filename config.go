@@ -411,26 +411,14 @@ func (c *Config) validateSource() error {
 		}
 
 	case sourceCloudImage:
-		hasPath := strings.TrimSpace(src.Path) != ""
-		hasURL := strings.TrimSpace(src.URL) != ""
-		if hasPath == hasURL {
-			return fmt.Errorf("source.type %q requires exactly one of source.path or source.url", sourceCloudImage)
+		if _, err := validateMediaSource(src, sourceCloudImage); err != nil {
+			return err
 		}
 		if src.ExtraArgs != "" {
 			return fmt.Errorf("source.extra_args is not valid for source.type %q", sourceCloudImage)
 		}
 		if src.Installer != nil {
 			return fmt.Errorf("source.installer requires source.type %q", sourceISO)
-		}
-		if hasURL {
-			if !validSHA256(src.SHA256) {
-				return fmt.Errorf("source.sha256 must be a 64-character hex digest for URL images")
-			}
-		} else if src.SHA256 != "" && !validSHA256(src.SHA256) {
-			return fmt.Errorf("source.sha256 must be a 64-character hex digest")
-		}
-		if src.Cache != "" && !hasURL {
-			return fmt.Errorf("source.cache requires source.url")
 		}
 		if c.Disk.Size <= 0 {
 			return fmt.Errorf("disk.size must be greater than zero")
@@ -451,11 +439,11 @@ func (c *Config) validateSource() error {
 		}
 
 	case sourceISO:
-		if strings.TrimSpace(src.Path) == "" {
-			return fmt.Errorf("source.path is required for source.type %q", sourceISO)
+		if _, err := validateMediaSource(src, sourceISO); err != nil {
+			return err
 		}
-		if src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" || src.SHA256 != "" || src.Cache != "" {
-			return fmt.Errorf("source.url, source.cloud_init, source.extra_args, source.sha256, and source.cache are not valid for source.type %q", sourceISO)
+		if src.CloudInit != "" || src.ExtraArgs != "" {
+			return fmt.Errorf("source.cloud_init and source.extra_args are not valid for source.type %q", sourceISO)
 		}
 		if err := validateInstaller(src.Installer); err != nil {
 			return err
@@ -465,11 +453,11 @@ func (c *Config) validateSource() error {
 		}
 
 	case sourceDisk:
-		if strings.TrimSpace(src.Path) == "" {
-			return fmt.Errorf("source.path is required for source.type %q", sourceDisk)
+		if _, err := validateMediaSource(src, sourceDisk); err != nil {
+			return err
 		}
-		if src.URL != "" || src.CloudInit != "" || src.ExtraArgs != "" || src.SHA256 != "" || src.Cache != "" {
-			return fmt.Errorf("source.url, source.cloud_init, source.extra_args, source.sha256, and source.cache are not valid for source.type %q", sourceDisk)
+		if src.CloudInit != "" || src.ExtraArgs != "" {
+			return fmt.Errorf("source.cloud_init and source.extra_args are not valid for source.type %q", sourceDisk)
 		}
 		if src.Installer != nil {
 			return fmt.Errorf("source.installer requires source.type %q", sourceISO)
@@ -495,6 +483,25 @@ func (c *Config) validateSource() error {
 	}
 
 	return nil
+}
+
+func validateMediaSource(src Source, sourceType string) (bool, error) {
+	hasPath := strings.TrimSpace(src.Path) != ""
+	hasURL := strings.TrimSpace(src.URL) != ""
+	if hasPath == hasURL {
+		return false, fmt.Errorf("source.type %q requires exactly one of source.path or source.url", sourceType)
+	}
+	if hasURL {
+		if !validSHA256(src.SHA256) {
+			return false, fmt.Errorf("source.sha256 must be a 64-character hex digest for URL media")
+		}
+	} else if src.SHA256 != "" && !validSHA256(src.SHA256) {
+		return false, fmt.Errorf("source.sha256 must be a 64-character hex digest")
+	}
+	if src.Cache != "" && !hasURL {
+		return false, fmt.Errorf("source.cache requires source.url")
+	}
+	return hasURL, nil
 }
 
 func validateInstaller(inst *Installer) error {

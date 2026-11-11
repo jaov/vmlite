@@ -103,13 +103,13 @@ func runUp(args []string) error {
 
 	resolvedImage, err := resolveImage(cfg, *offline, *dryRun)
 	if errors.Is(err, errImageWouldDownload) {
-		fmt.Printf("Would download image %s into the cache\n", cfg.Source.URL)
+		fmt.Printf("Would download media %s into the cache\n", cfg.Source.URL)
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if cfg.Source.Type == sourceCloudImage {
+	if resolvedImage != "" {
 		cfg.Source.Path = resolvedImage
 	}
 

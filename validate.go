@@ -40,8 +40,10 @@ func validateLocalPaths(cfg *Config) error {
 			}
 		}
 	case sourceISO, sourceDisk:
-		if err := requirePath("source.path", cfg.Source.Path); err != nil {
-			return err
+		if cfg.Source.Path != "" {
+			if err := requirePath("source.path", cfg.Source.Path); err != nil {
+				return err
+			}
 		}
 	}
 	for i, d := range cfg.ExtraDisks {

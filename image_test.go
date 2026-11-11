@@ -112,6 +112,33 @@ func TestResolveImageLocal(t *testing.T) {
 	}
 }
 
+func TestResolveMediaURL(t *testing.T) {
+	data := []byte("installer-media")
+	sha := shaHex(data)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	for _, sourceType := range []string{sourceCloudImage, sourceISO, sourceDisk} {
+		cache := t.TempDir()
+		cfg := &Config{Source: Source{
+			Type:   sourceType,
+			URL:    server.URL + "/media.iso",
+			SHA256: sha,
+			Cache:  cache,
+		}}
+		got, err := resolveImage(cfg, false, false)
+		if err != nil {
+			t.Fatalf("%s: resolveImage: %v", sourceType, err)
+		}
+		content, err := os.ReadFile(got)
+		if err != nil || string(content) != string(data) {
+			t.Fatalf("%s: cached media = %q, err %v", sourceType, content, err)
+		}
+	}
+}
+
 func TestResolveImageURL(t *testing.T) {
 	data := []byte("remote-image")
 	sha := shaHex(data)

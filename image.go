@@ -20,10 +20,13 @@ import (
 
 var errImageWouldDownload = errors.New("image would be downloaded")
 
-// resolveImage returns a local, verified cloud-image path. URL images are
-// downloaded into the cache and checked against source.sha256.
+// resolveImage returns a local, verified media path. Cloud images, ISO
+// installers, and imported disks may use URL sources; URL media is downloaded
+// into the cache and checked against source.sha256.
 func resolveImage(cfg *Config, offline, dryRun bool) (string, error) {
-	if cfg.Source.Type != sourceCloudImage {
+	switch cfg.Source.Type {
+	case sourceCloudImage, sourceISO, sourceDisk:
+	default:
 		return "", nil
 	}
 
