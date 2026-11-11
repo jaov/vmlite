@@ -68,6 +68,45 @@ key injected through NoCloud `vendor-data`.
 The Debian install/remaster/finalization path was verified. Full SSH
 provisioning depends on guest access to a package mirror.
 
+## Arch scripted install
+
+```json
+"source": {
+  "type": "iso",
+  "path": "/isos/archlinux-2026.11.01-x86_64.iso",
+  "installer": { "type": "arch_script" }
+}
+```
+
+- The ISO is remastered with `/vmlite-arch-install.sh`.
+- The live ISO is booted with an explicit kernel/initrd and
+  `script=/run/archiso/bootmnt/vmlite-arch-install.sh`.
+- The default script partitions `/dev/vda`, installs `base`, `linux`,
+  `linux-firmware`, `grub`, `openssh`, `sudo`, and `dhcpcd`, configures GRUB
+  for BIOS and serial console output, enables `sshd` and `dhcpcd`, then powers
+  off.
+- The installed system boots from disk, obtains DHCP, and accepts the generated
+  SSH key.
+- `vmlite up` starts the installer and returns; `vmlite provision` waits for
+  shutdown, ejects the media, boots the installed disk, waits for SSH, and runs
+  provisioners.
+
+Requirements:
+
+- `firmware: "bios"`; direct kernel boot is not implemented for UEFI.
+- Guest network access to Arch package mirrors.
+- `xorriso` on the host for remastering.
+- At least 2 GiB of guest memory. The live environment uses a 1 GiB cowspace.
+
+Custom scripts can be supplied with `installer.inline` or `installer.config`
+and use the usual placeholders:
+
+- `{{VMLITE_HOSTNAME}}`
+- `{{VMLITE_SSH_USER}}`
+- `{{VMLITE_SSH_AUTHORIZED_KEY}}`
+
+The Arch installer was verified end to end on this host.
+
 ## Windows autounattend
 
 ```json
@@ -146,8 +185,9 @@ WinPE validates Windows boot and media plumbing without a full installation.
 
 ## Manual ISO and prebuilt disk provisioning
 
-Arch, FreeBSD, OpenBSD, NetBSD, or any other guest can be provisioned after a
-manual install or from a prebuilt disk.
+FreeBSD, OpenBSD, NetBSD, or any other guest can be provisioned after a manual
+install or from a prebuilt disk. Arch also has the automated `arch_script`
+installer above.
 
 ### Manual ISO
 

@@ -18,8 +18,10 @@ func TestSchemaOutput(t *testing.T) {
 	if schema["$schema"] == nil || schema["properties"] == nil {
 		t.Fatalf("schema missing expected keys: %v", schema)
 	}
-	if !strings.Contains(out, "windows_autounattend") || !strings.Contains(out, "provisioners") {
-		t.Fatalf("schema missing expected definitions")
+	for _, want := range []string{"windows_autounattend", "arch_script", "provisioners"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("schema missing %q", want)
+		}
 	}
 }
 

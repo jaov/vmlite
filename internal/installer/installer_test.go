@@ -322,6 +322,86 @@ func TestWindowsGeneratedRequiresPasswordAndKey(t *testing.T) {
 	}
 }
 
+func TestArchScriptSpec(t *testing.T) {
+	impl, err := Lookup(ArchScript)
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+	spec, err := impl.Spec(Input{
+		Hostname: "arch-vm",
+		SSHUser:  "vmlite",
+		SSHKey:   "ssh-ed25519 AAAA test",
+	})
+	if err != nil {
+		t.Fatalf("Spec: %v", err)
+	}
+	if spec.Type != ArchScript || spec.Seed != nil {
+		t.Fatalf("spec = %+v", spec)
+	}
+	if len(spec.InjectFiles) != 1 || spec.InjectFiles[0].Name != "vmlite-arch-install.sh" {
+		t.Fatalf("injected files = %+v", spec.InjectFiles)
+	}
+	args := strings.Join(spec.KernelArgs, " ")
+	for _, want := range []string{
+		"archisobasedir=arch",
+		"archisodevice=/dev/sr0",
+		"script=/run/archiso/bootmnt/vmlite-arch-install.sh",
+	} {
+		if !strings.Contains(args, want) {
+			t.Errorf("kernel args missing %q: %s", want, args)
+		}
+	}
+	if !spec.KernelBoot || spec.KernelPath != "/arch/boot/x86_64/vmlinuz-linux" || spec.InitrdPath != "/arch/boot/x86_64/initramfs-linux.img" {
+		t.Fatalf("kernel boot = %v %q %q", spec.KernelBoot, spec.KernelPath, spec.InitrdPath)
+	}
+	if spec.DiskBus != "virtio" || spec.Completion != CompletionShutdown {
+		t.Fatalf("bus/completion = %q/%q", spec.DiskBus, spec.Completion)
+	}
+	script := string(spec.InjectFiles[0].Data)
+	for _, want := range []string{
+		"pacstrap -K /mnt base linux",
+		"grub-install --target=i386-pc /dev/vda",
+		"console=ttyS0",
+		"GRUB_TERMINAL_OUTPUT=\"console serial\"",
+		"GRUB_SERIAL_COMMAND",
+		"echo 'arch-vm' > /etc/hostname",
+		"useradd -m -G wheel -s /bin/bash 'vmlite'",
+		"ssh-ed25519 AAAA test",
+		"poweroff",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("Arch script missing %q:\n%s", want, script)
+		}
+	}
+}
+
+func TestArchScriptCustomAndOptionalKey(t *testing.T) {
+	impl, _ := Lookup(ArchScript)
+	noKey, err := impl.Spec(Input{Hostname: "arch", SSHUser: "vmlite"})
+	if err != nil {
+		t.Fatalf("Spec without key: %v", err)
+	}
+	noKeyScript := string(noKey.InjectFiles[0].Data)
+	if strings.Contains(noKeyScript, "authorized_keys") {
+		t.Fatalf("script without key should not install authorized_keys:\n%s", noKeyScript)
+	}
+	if !strings.Contains(noKeyScript, "useradd -m -G wheel") {
+		t.Fatalf("script without key should still create the user:\n%s", noKeyScript)
+	}
+	spec, err := impl.Spec(Input{
+		Hostname:   "arch",
+		SSHUser:    "vmlite",
+		SSHKey:     "ssh-ed25519 AAAA",
+		AnswerFile: []byte("#!/bin/bash\necho {{VMLITE_HOSTNAME}} {{VMLITE_SSH_USER}} {{VMLITE_SSH_AUTHORIZED_KEY}}\n"),
+	})
+	if err != nil {
+		t.Fatalf("custom Spec: %v", err)
+	}
+	if got := string(spec.InjectFiles[0].Data); got != "#!/bin/bash\necho arch vmlite ssh-ed25519 AAAA\n" {
+		t.Fatalf("custom script = %q", got)
+	}
+}
+
 func TestUbuntuRejectsUnsafeUser(t *testing.T) {
 	impl, _ := Lookup(UbuntuAutoinstall)
 	_, err := impl.Spec(Input{Hostname: "demo", SSHUser: `bad"user`, SSHKey: "ssh-ed25519 AAAA"})

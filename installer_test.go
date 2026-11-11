@@ -151,6 +151,83 @@ func TestPrepareInstallerISO(t *testing.T) {
 	}
 }
 
+func TestPrepareInstallerKernel(t *testing.T) {
+	binDir := t.TempDir()
+	argsLog := filepath.Join(binDir, "xorriso.log")
+	script := "#!/bin/sh\n" +
+		"out=\"\"\n" +
+		"while [ $# -gt 0 ]; do\n" +
+		"  printf '%s\\n' \"$1\" >> " + argsLog + "\n" +
+		"  case \"$1\" in\n" +
+		"    -outdev) out=\"$2\"; shift 2 ;;\n" +
+		"    -extract) printf '%s\\n%s\\n' \"$2\" \"$3\" >> " + argsLog + "; printf 'arch-kernel-%s' \"$(basename \"$2\")\" > \"$3\"; shift 3 ;;\n" +
+		"    *) shift ;;\n" +
+		"  esac\n" +
+		"done\n" +
+		"if [ -n \"$out\" ]; then : > \"$out\"; fi\n" +
+		"exit 0\n"
+	if err := os.WriteFile(filepath.Join(binDir, "xorriso"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake xorriso: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	dir := t.TempDir()
+	source := filepath.Join(dir, "arch.iso")
+	if err := os.WriteFile(source, []byte("iso"), 0o644); err != nil {
+		t.Fatalf("write source ISO: %v", err)
+	}
+	cfg := &Config{
+		Name:         "arch",
+		Source:       Source{Type: sourceISO, Path: source, Installer: &Installer{Type: "arch_script"}},
+		Disk:         Disk{Size: 8, Path: filepath.Join(dir, "disk.qcow2"), Format: diskFormatQCOW2},
+		assetDir:     filepath.Join(dir, ".vmlite", "arch"),
+		sshPublicKey: "ssh-ed25519 AAAA test",
+	}
+	spec, err := cfg.installerSpec()
+	if err != nil {
+		t.Fatalf("installerSpec: %v", err)
+	}
+	kernel, initrd, err := prepareInstallerKernel(cfg, spec)
+	if err != nil {
+		t.Fatalf("prepareInstallerKernel: %v", err)
+	}
+	for _, path := range []string{kernel, initrd} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read extracted file %q: %v", path, err)
+		}
+		if !strings.Contains(string(data), "arch-kernel-") {
+			t.Fatalf("unexpected extracted data in %q: %q", path, data)
+		}
+	}
+	data, err := os.ReadFile(argsLog)
+	if err != nil {
+		t.Fatalf("read xorriso log: %v", err)
+	}
+	log := string(data)
+	for _, want := range []string{
+		"-osirrox", "on", "-extract", spec.KernelPath, "-extract", spec.InitrdPath,
+	} {
+		if !strings.Contains(log, want) {
+			t.Errorf("xorriso log missing %q:\n%s", want, log)
+		}
+	}
+
+	args, err := buildSourceArgs(cfg, spec)
+	if err != nil {
+		t.Fatalf("buildSourceArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"--cdrom", "kernel=" + kernel, "initrd=" + initrd, "kernel_args=archisobasedir=arch"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("source args missing %q: %s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "--location") {
+		t.Errorf("kernel boot should not use --location: %s", joined)
+	}
+}
+
 func TestNewStateInstaller(t *testing.T) {
 	layout := projectLayout{
 		ConfigPath: "/tmp/vm.json",

@@ -19,6 +19,8 @@ const (
 	DebianPreseed = "debian_preseed"
 	// WindowsAutoUnattend is the Windows Setup autounattend provider.
 	WindowsAutoUnattend = "windows_autounattend"
+	// ArchScript is the archiso scripted installer.
+	ArchScript = "arch_script"
 )
 
 // Input is the host and account information an installer may inject.
@@ -47,6 +49,12 @@ type Spec struct {
 	SeedDevice string   // disk or cdrom
 	BootOrder  []string // final boot order, e.g. hd,cdrom
 	KernelArgs []string
+	// KernelBoot boots the installer ISO with an explicit kernel and initrd
+	// instead of treating it as an install tree. Use for live images that
+	// virt-install cannot detect with --location.
+	KernelBoot bool
+	KernelPath string // kernel path inside the ISO
+	InitrdPath string // initrd path inside the ISO
 	// DiskBus is the default bus for installer primary disks. Empty means
 	// virtio, preserving Linux installer behavior.
 	DiskBus string
@@ -81,6 +89,8 @@ func Lookup(typ string) (Installer, error) {
 		return debianPreseed{}, nil
 	case WindowsAutoUnattend:
 		return windowsAutoUnattend{}, nil
+	case ArchScript:
+		return archScript{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported installer.type %q", typ)
 	}

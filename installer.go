@@ -211,6 +211,105 @@ func prepareInstallerISO(cfg *Config, spec guestinstall.Spec) (string, error) {
 	return path, nil
 }
 
+// prepareInstallerKernel extracts the kernel and initrd used by installers
+// that boot a live ISO directly instead of using --location.
+func prepareInstallerKernel(cfg *Config, spec guestinstall.Spec) (string, string, error) {
+	if !spec.KernelBoot {
+		return "", "", nil
+	}
+	if strings.TrimSpace(spec.KernelPath) == "" || strings.TrimSpace(spec.InitrdPath) == "" {
+		return "", "", fmt.Errorf("installer %q uses kernel boot without kernel or initrd paths", spec.Type)
+	}
+	for _, path := range []string{spec.KernelPath, spec.InitrdPath} {
+		clean := filepath.Clean(path)
+		if !filepath.IsAbs(path) || clean != path {
+			return "", "", fmt.Errorf("installer kernel path %q must be a clean absolute ISO path", path)
+		}
+	}
+	if strings.TrimSpace(cfg.assetDir) == "" {
+		return "", "", fmt.Errorf("installer kernel extraction requires the project asset directory")
+	}
+
+	iso, err := prepareInstallerISO(cfg, spec)
+	if err != nil {
+		return "", "", err
+	}
+	if iso == "" {
+		iso, err = filepath.Abs(cfg.Source.Path)
+		if err != nil {
+			return "", "", fmt.Errorf("resolve iso %q: %w", cfg.Source.Path, err)
+		}
+	}
+	if _, err := os.Stat(iso); err != nil {
+		return "", "", fmt.Errorf("iso %q is not accessible: %w", iso, err)
+	}
+
+	kernel := filepath.Join(cfg.assetDir, "installer-vmlinuz")
+	initrd := filepath.Join(cfg.assetDir, "installer-initrd")
+	kernelReady := false
+	if _, err := os.Stat(kernel); err == nil {
+		kernelReady = true
+	} else if !os.IsNotExist(err) {
+		return "", "", fmt.Errorf("check installer kernel: %w", err)
+	}
+	initrdReady := false
+	if _, err := os.Stat(initrd); err == nil {
+		initrdReady = true
+	} else if !os.IsNotExist(err) {
+		return "", "", fmt.Errorf("check installer initrd: %w", err)
+	}
+	if kernelReady && initrdReady {
+		return kernel, initrd, nil
+	}
+
+	if _, err := exec.LookPath("xorriso"); err != nil {
+		return "", "", fmt.Errorf("extracting installer kernel requires xorriso in PATH: %w", err)
+	}
+	if err := os.MkdirAll(cfg.assetDir, 0o755); err != nil {
+		return "", "", fmt.Errorf("create installer asset directory: %w", err)
+	}
+
+	tmpKernel, err := os.CreateTemp(cfg.assetDir, ".installer-vmlinuz-*")
+	if err != nil {
+		return "", "", fmt.Errorf("create installer kernel temp file: %w", err)
+	}
+	tmpKernelPath := tmpKernel.Name()
+	tmpKernel.Close()
+	os.Remove(tmpKernelPath)
+	defer os.Remove(tmpKernelPath)
+
+	tmpInitrd, err := os.CreateTemp(cfg.assetDir, ".installer-initrd-*")
+	if err != nil {
+		return "", "", fmt.Errorf("create installer initrd temp file: %w", err)
+	}
+	tmpInitrdPath := tmpInitrd.Name()
+	tmpInitrd.Close()
+	os.Remove(tmpInitrdPath)
+	defer os.Remove(tmpInitrdPath)
+
+	args := []string{
+		"-osirrox", "on",
+		"-indev", iso,
+		"-extract", spec.KernelPath, tmpKernelPath,
+		"-extract", spec.InitrdPath, tmpInitrdPath,
+	}
+	if out, err := exec.Command("xorriso", args...).CombinedOutput(); err != nil {
+		return "", "", fmt.Errorf("extract installer kernel from %q: %w: %s", iso, err, strings.TrimSpace(string(out)))
+	}
+	for _, path := range []string{tmpKernelPath, tmpInitrdPath} {
+		if err := os.Chmod(path, 0o644); err != nil {
+			return "", "", fmt.Errorf("chmod installer kernel file: %w", err)
+		}
+	}
+	if err := os.Rename(tmpKernelPath, kernel); err != nil {
+		return "", "", fmt.Errorf("install installer kernel: %w", err)
+	}
+	if err := os.Rename(tmpInitrdPath, initrd); err != nil {
+		return "", "", fmt.Errorf("install installer initrd: %w", err)
+	}
+	return kernel, initrd, nil
+}
+
 // prepareInstallerSeed creates the answer media consumed by an unattended ISO
 // installer. Cloud images use prepareSeed instead.
 func prepareInstallerSeed(cfg *Config) (string, error) {

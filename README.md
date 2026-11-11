@@ -187,10 +187,11 @@ Automated ISO installers:
 | `ubuntu_autoinstall` | Ubuntu live-server ISO |
 | `fedora_kickstart` | Fedora Server ISO |
 | `debian_preseed` | Debian netinst ISO |
+| `arch_script` | Arch Linux ISO |
 | `windows_autounattend` | Windows Server/client ISO |
 
 Manual ISO and prebuilt disk sources are provisionable with a user-provided
-`ssh.key`. This covers Arch, FreeBSD, OpenBSD, NetBSD, and other guests today.
+`ssh.key`. This covers FreeBSD, OpenBSD, NetBSD, and other guests today.
 
 See:
 

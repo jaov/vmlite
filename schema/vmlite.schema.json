@@ -57,7 +57,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["ubuntu_autoinstall", "fedora_kickstart", "debian_preseed", "windows_autounattend"]
+          "enum": ["ubuntu_autoinstall", "fedora_kickstart", "debian_preseed", "windows_autounattend", "arch_script"]
         },
         "config": { "type": "string" },
         "inline": { "type": "string" },

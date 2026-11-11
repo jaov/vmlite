@@ -1,0 +1,17 @@
+{
+  "name": "arch-auto",
+  "memory": 2048,
+  "cpus": 2,
+  "firmware": "bios",
+  "source": {
+    "type": "iso",
+    "path": "/isos/archlinux-2026.11.01-x86_64.iso",
+    "installer": { "type": "arch_script" }
+  },
+  "disk": { "size": 8 },
+  "network": { "mode": "default" },
+  "graphics": { "type": "none" },
+  "provisioners": [
+    { "type": "shell", "inline": "pacman -Sy --noconfirm nginx && systemctl enable --now nginx" }
+  ]
+}

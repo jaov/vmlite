@@ -261,6 +261,7 @@ Installer types:
 | `ubuntu_autoinstall` | Ubuntu live-server ISO |
 | `fedora_kickstart` | Fedora Server ISO |
 | `debian_preseed` | Debian netinst ISO |
+| `arch_script` | Arch Linux ISO |
 | `windows_autounattend` | Windows Server/client ISO |
 
 See `docs/installers.md` for per-installer details.

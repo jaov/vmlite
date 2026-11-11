@@ -35,7 +35,13 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	args = append(args, bootArgs(cfg.Firmware, spec.BootOrder, cfg.SecureBoot)...)
+	if spec.KernelBoot {
+		if cfg.Firmware == firmwareUEFI {
+			return nil, fmt.Errorf("installer %q uses direct kernel boot, which currently requires firmware %q", spec.Type, firmwareBIOS)
+		}
+	} else {
+		args = append(args, bootArgs(cfg.Firmware, spec.BootOrder, cfg.SecureBoot)...)
+	}
 	if cfg.TPM != nil {
 		args = append(args, "--tpm", fmt.Sprintf("backend.type=%s,backend.version=%s", cfg.tpmBackend(), cfg.tpmVersion()))
 	}
@@ -179,7 +185,17 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 			return nil, err
 		}
 		args := diskArgs
-		if len(spec.KernelArgs) > 0 {
+		if spec.KernelBoot {
+			kernel, initrd, err := prepareInstallerKernel(cfg, spec)
+			if err != nil {
+				return nil, err
+			}
+			boot := fmt.Sprintf("kernel=%s,initrd=%s", kernel, initrd)
+			if len(spec.KernelArgs) > 0 {
+				boot += ",kernel_args=" + strings.Join(spec.KernelArgs, " ")
+			}
+			args = append(args, "--cdrom", iso, "--boot", boot)
+		} else if len(spec.KernelArgs) > 0 {
 			args = append(args, "--location", iso, "--extra-args", strings.Join(spec.KernelArgs, " "))
 		} else {
 			args = append(args, "--cdrom", iso)
