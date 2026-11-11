@@ -151,7 +151,7 @@ ssh_pwauth: false
 		t.Fatalf("builder does not use host-passthrough CPU:\n%s", xmlOut)
 	}
 
-	ip := waitForGuestSSH(t, systemURI, name, "vmlite", keyPath, 15*time.Minute)
+	ip := waitForGuestSSHLease(t, systemURI, name, "vmlite", keyPath, 15*time.Minute)
 
 	// Build once on the host and install the static binary through install.sh.
 	binary := filepath.Join(workDir, "vmlite-linux-amd64")

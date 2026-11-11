@@ -159,9 +159,9 @@ func domainIPv4(t *testing.T, uri, name string) string {
 	return ""
 }
 
-// waitForGuestSSH re-resolves the DHCP lease on every attempt, so it survives
-// the first-boot package-update reboot some images perform.
-func waitForGuestSSH(t *testing.T, uri, name, userName, key string, timeout time.Duration) string {
+// waitForGuestSSHLease re-resolves the DHCP lease on every attempt, so it
+// survives the first-boot package-update reboot some images perform.
+func waitForGuestSSHLease(t *testing.T, uri, name, userName, key string, timeout time.Duration) string {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	var lastIP, lastOut string
@@ -375,7 +375,7 @@ ssh_pwauth: false
 		}
 	}
 
-	ip := waitForGuestSSH(t, systemURI, name, sshUser, keyPath, sshTimeout)
+	ip := waitForGuestSSHLease(t, systemURI, name, sshUser, keyPath, sshTimeout)
 
 	osOut, err := sshGuest(t, sshUser, ip, keyPath, "uname -s", 30*time.Second)
 	if err != nil {
