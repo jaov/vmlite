@@ -126,6 +126,9 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"provisioner without source", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell"}]}`, "exactly one of path or inline"},
 		{"provisioner bad run", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true", "run": "sometimes"}]}`, "run must be"},
 		{"provisioner bad type", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "ansible", "inline": "true"}]}`, "type must be"},
+		{"upload missing source", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true", "uploads": [{"target": "/tmp/x"}]}]}`, "uploads[0].source is required"},
+		{"upload missing target", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true", "uploads": [{"source": "/tmp/x"}]}]}`, "uploads[0].target is required"},
+		{"bad env key", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "provisioners": [{"type": "shell", "inline": "true", "env": {"BAD-KEY": "x"}}]}`, "env key"},
 		{"provisioner user network", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x"}, "disk": {"size": 5}, "network": {"mode": "user"}, "provisioners": [{"type": "shell", "inline": "true"}]}`, "guest-visible network"},
 		{"installer on cloud image", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "cloud_image", "path": "/tmp/x", "installer": {"type": "ubuntu_autoinstall"}}, "disk": {"size": 5}}`, "source.installer requires"},
 		{"unknown installer", `{"name": "vm", "memory": 1024, "cpus": 1, "source": {"type": "iso", "path": "/tmp/x.iso", "installer": {"type": "nope"}}, "disk": {"size": 5}}`, "unsupported installer.type"},
@@ -430,6 +433,33 @@ func TestLoadConfigPowerShellProvisioner(t *testing.T) {
 	}
 	if len(cfg.Provisioners) != 1 || cfg.Provisioners[0].Type != "powershell" {
 		t.Fatalf("provisioners = %+v", cfg.Provisioners)
+	}
+}
+
+func TestLoadConfigProvisionerUploadsEnv(t *testing.T) {
+	path := writeConfigFile(t, `{
+		"name": "uploads",
+		"memory": 1024,
+		"cpus": 1,
+		"source": {"type": "cloud_image", "path": "/tmp/base.qcow2"},
+		"disk": {"size": 5},
+		"provisioners": [{
+			"type": "shell",
+			"inline": "test -f /etc/app.conf",
+			"uploads": [{"source": "./app.conf", "target": "/etc/app.conf"}],
+			"env": {"APP_ENV": "dev", "RETRIES": "3"}
+		}]
+	}`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	p := cfg.Provisioners[0]
+	if len(p.Uploads) != 1 || p.Uploads[0].Target != "/etc/app.conf" {
+		t.Fatalf("uploads = %+v", p.Uploads)
+	}
+	if p.Env["APP_ENV"] != "dev" {
+		t.Fatalf("env = %+v", p.Env)
 	}
 }
 

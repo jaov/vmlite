@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -144,6 +145,12 @@ func waitForSSH(ctx context.Context, runner *plan.SSHRunner, timeout time.Durati
 	return fmt.Errorf("SSH to %s@%s did not become ready within %s: %w", runner.User, runner.Host, timeout, last)
 }
 
+type provisionUpload struct {
+	source string
+	target string
+	data   []byte
+}
+
 type shellStep struct {
 	desc      string
 	id        string
@@ -154,6 +161,8 @@ type shellStep struct {
 	state     *State
 	stateFile string
 	runner    *plan.SSHRunner
+	uploads   []provisionUpload
+	env       map[string]string
 	force     bool
 	dryRun    bool
 }
@@ -173,6 +182,19 @@ func (s *shellStep) Check(ctx context.Context, r plan.Runner) (bool, error) {
 }
 
 func (s *shellStep) Apply(ctx context.Context, r plan.Runner) error {
+	script := s.script
+	var env []string
+	if s.typ == "powershell" {
+		script = powershellScriptWithEnv(script, s.env)
+	} else {
+		env = envSlice(s.env)
+	}
+	if len(s.uploads) > 0 {
+		if err := s.uploadFiles(); err != nil {
+			return err
+		}
+	}
+
 	name := "bash"
 	args := []string{"-s"}
 	sudo := s.runner.User != "root"
@@ -185,7 +207,8 @@ func (s *shellStep) Apply(ctx context.Context, r plan.Runner) error {
 		Name:  name,
 		Args:  args,
 		Sudo:  sudo,
-		Stdin: bytes.NewReader(s.script),
+		Env:   env,
+		Stdin: bytes.NewReader(script),
 	}); err != nil {
 		return err
 	}
@@ -385,6 +408,107 @@ func provisionTimeouts(st *State, override time.Duration) (time.Duration, time.D
 	return ipTimeout, sshTimeout
 }
 
+func (s *shellStep) uploadFiles() error {
+	for _, upload := range s.uploads {
+		args := []string{
+			"-i", s.runner.Key,
+			"-o", "BatchMode=yes",
+			"-o", "IdentitiesOnly=yes",
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "UserKnownHostsFile=/dev/null",
+			"-o", "ConnectTimeout=10",
+			"-o", "LogLevel=ERROR",
+			upload.source,
+			s.runner.User + "@" + s.runner.Host + ":" + upload.target,
+		}
+		if s.dryRun {
+			fmt.Printf("+ scp %s\n", strings.Join(args, " "))
+			continue
+		}
+		cmd := exec.Command("scp", args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("upload %s to %s@%s:%s: %w", upload.source, s.runner.User, s.runner.Host, upload.target, err)
+		}
+	}
+	return nil
+}
+
+func envSlice(env map[string]string) []string {
+	if len(env) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make([]string, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, key+"="+env[key])
+	}
+	return result
+}
+
+func powershellScriptWithEnv(script []byte, env map[string]string) []byte {
+	if len(env) == 0 {
+		return script
+	}
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var out bytes.Buffer
+	for _, key := range keys {
+		value := strings.ReplaceAll(env[key], "'", "''")
+		fmt.Fprintf(&out, "$env:%s = '%s'\n", key, value)
+	}
+	out.Write(script)
+	return out.Bytes()
+}
+
+func provisionHash(script []byte, env map[string]string, uploads []provisionUpload) string {
+	h := sha256.New()
+	_, _ = h.Write(script)
+	for _, entry := range envSlice(env) {
+		_, _ = h.Write([]byte("env\x00" + entry + "\x00"))
+	}
+	for _, upload := range uploads {
+		_, _ = h.Write([]byte("upload\x00" + upload.source + "\x00" + upload.target + "\x00"))
+		_, _ = h.Write(upload.data)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func readProvisionUploads(p Provisioner, layout projectLayout) ([]provisionUpload, error) {
+	uploads := make([]provisionUpload, 0, len(p.Uploads))
+	for _, upload := range p.Uploads {
+		source := upload.Source
+		if !filepath.IsAbs(source) {
+			source = filepath.Join(filepath.Dir(layout.ConfigPath), source)
+		}
+		source, err := filepath.Abs(source)
+		if err != nil {
+			return nil, fmt.Errorf("resolve upload source %q: %w", upload.Source, err)
+		}
+		info, err := os.Stat(source)
+		if err != nil {
+			return nil, fmt.Errorf("upload source %q is not accessible: %w", upload.Source, err)
+		}
+		if info.IsDir() {
+			return nil, fmt.Errorf("upload source %q is a directory; uploads currently support files only", upload.Source)
+		}
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return nil, fmt.Errorf("read upload source %q: %w", upload.Source, err)
+		}
+		uploads = append(uploads, provisionUpload{source: source, target: upload.Target, data: data})
+	}
+	return uploads, nil
+}
+
 func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun bool, timeout time.Duration) error {
 	if len(cfg.Provisioners) == 0 && st.InstallerType == "" {
 		return nil
@@ -474,7 +598,11 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 			script = []byte(p.Inline)
 			id = fmt.Sprintf("inline-%d", i)
 		}
-		sum := sha256.Sum256(script)
+		uploads, err := readProvisionUploads(p, layout)
+		if err != nil {
+			return err
+		}
+		hash := provisionHash(script, p.Env, uploads)
 		run := p.Run
 		if run == "" {
 			run = "once"
@@ -488,11 +616,13 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 			id:        id,
 			typ:       typ,
 			script:    script,
-			hash:      hex.EncodeToString(sum[:]),
+			hash:      hash,
 			run:       run,
 			state:     st,
 			stateFile: layout.StateFile,
 			runner:    runner,
+			uploads:   uploads,
+			env:       p.Env,
 			force:     force,
 			dryRun:    dryRun,
 		})

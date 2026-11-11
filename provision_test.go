@@ -259,6 +259,85 @@ func TestPowerShellStep(t *testing.T) {
 	}
 }
 
+func TestShellStepUploadsAndEnv(t *testing.T) {
+	binDir := t.TempDir()
+	sshLog := filepath.Join(binDir, "ssh.log")
+	scpLog := filepath.Join(binDir, "scp.log")
+	sshScript := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + sshLog + "\n/bin/cat >/dev/null\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(binDir, "ssh"), []byte(sshScript), 0o755); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
+	}
+	scpScript := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + scpLog + "\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(binDir, "scp"), []byte(scpScript), 0o755); err != nil {
+		t.Fatalf("write fake scp: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	local := filepath.Join(t.TempDir(), "app.conf")
+	data := []byte("setting=1\n")
+	if err := os.WriteFile(local, data, 0o644); err != nil {
+		t.Fatalf("write upload: %v", err)
+	}
+	state := &State{Version: 1, Name: "dev"}
+	runner := &plan.SSHRunner{Host: "192.0.2.10", User: "root", Key: "/tmp/key"}
+	step := &shellStep{
+		desc:      "uploads",
+		id:        "inline-0",
+		typ:       "shell",
+		script:    []byte("echo hi\n"),
+		hash:      "abc",
+		run:       "once",
+		state:     state,
+		stateFile: filepath.Join(t.TempDir(), "state.json"),
+		runner:    runner,
+		uploads:   []provisionUpload{{source: local, target: "/etc/app.conf", data: data}},
+		env:       map[string]string{"APP_ENV": "dev", "RETRIES": "3"},
+	}
+	if err := step.Apply(context.Background(), runner); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	scpData, err := os.ReadFile(scpLog)
+	if err != nil {
+		t.Fatalf("read scp log: %v", err)
+	}
+	scp := string(scpData)
+	for _, want := range []string{local, "root@192.0.2.10:/etc/app.conf"} {
+		if !strings.Contains(scp, want) {
+			t.Errorf("scp log missing %q:\n%s", want, scp)
+		}
+	}
+	sshData, err := os.ReadFile(sshLog)
+	if err != nil {
+		t.Fatalf("read ssh log: %v", err)
+	}
+	ssh := string(sshData)
+	for _, want := range []string{"env", "APP_ENV=dev", "RETRIES=3", "bash", "-s"} {
+		if !strings.Contains(ssh, want) {
+			t.Errorf("ssh log missing %q:\n%s", want, ssh)
+		}
+	}
+}
+
+func TestPowerShellEnvPrelude(t *testing.T) {
+	got := powershellScriptWithEnv([]byte("Write-Output hi\n"), map[string]string{"APP_ENV": "dev", "QUOTED": "a'b"})
+	script := string(got)
+	for _, want := range []string{"$env:APP_ENV = 'dev'", "$env:QUOTED = 'a''b'", "Write-Output hi"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("PowerShell script missing %q:\n%s", want, script)
+		}
+	}
+}
+
+func TestProvisionHashIncludesEnvAndUploads(t *testing.T) {
+	base := provisionHash([]byte("echo hi"), nil, nil)
+	withEnv := provisionHash([]byte("echo hi"), map[string]string{"APP_ENV": "dev"}, nil)
+	withUpload := provisionHash([]byte("echo hi"), nil, []provisionUpload{{source: "/tmp/a", target: "/etc/a", data: []byte("a")}})
+	if base == withEnv || base == withUpload || withEnv == withUpload {
+		t.Fatalf("hashes should differ: %q %q %q", base, withEnv, withUpload)
+	}
+}
+
 func TestProvisionShellStep(t *testing.T) {
 	binDir := t.TempDir()
 	script := "#!/bin/sh\n/bin/cat >/dev/null\nexit 0\n"

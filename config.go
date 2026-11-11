@@ -82,12 +82,20 @@ type SSHConfig struct {
 	Key  string `json:"key,omitempty"`
 }
 
-// Provisioner is a post-boot shell action.
+// Provisioner is a post-boot script and optional file uploads.
 type Provisioner struct {
-	Type   string `json:"type,omitempty"`
-	Path   string `json:"path,omitempty"`
-	Inline string `json:"inline,omitempty"`
-	Run    string `json:"run,omitempty"` // once, always
+	Type    string            `json:"type,omitempty"`
+	Path    string            `json:"path,omitempty"`
+	Inline  string            `json:"inline,omitempty"`
+	Run     string            `json:"run,omitempty"` // once, always
+	Uploads []Upload          `json:"uploads,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+}
+
+// Upload copies a host file into the guest before a provisioner runs.
+type Upload struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
 }
 
 func (c *Config) sshUser() string {
@@ -378,9 +386,38 @@ func (c *Config) Validate() error {
 		default:
 			return fmt.Errorf("provisioners[%d].run must be %q or %q", i, "once", "always")
 		}
+		for j, u := range p.Uploads {
+			if strings.TrimSpace(u.Source) == "" {
+				return fmt.Errorf("provisioners[%d].uploads[%d].source is required", i, j)
+			}
+			if strings.TrimSpace(u.Target) == "" {
+				return fmt.Errorf("provisioners[%d].uploads[%d].target is required", i, j)
+			}
+		}
+		for key := range p.Env {
+			if !validEnvName(key) {
+				return fmt.Errorf("provisioners[%d].env key %q is invalid", i, key)
+			}
+		}
 	}
 
 	return nil
+}
+
+func validEnvName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
+		if i == 0 && r >= '0' && r <= '9' {
+			ok = false
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func validSHA256(s string) bool {
