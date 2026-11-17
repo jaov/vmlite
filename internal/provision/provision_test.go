@@ -1,4 +1,4 @@
-package main
+package provision
 
 import (
 	"context"
@@ -22,7 +22,7 @@ func TestEnsureSSHKeyGenerated(t *testing.T) {
 		Source:       Source{Type: sourceCloudImage, Path: "/tmp/base.qcow2"},
 		Provisioners: []Provisioner{{Type: "shell", Inline: "true"}},
 	}
-	if err := ensureSSHKey(cfg, layout); err != nil {
+	if err := EnsureSSHKey(cfg, layout); err != nil {
 		t.Fatalf("ensureSSHKey: %v", err)
 	}
 	if cfg.SSH.Key == "" {
@@ -58,7 +58,7 @@ func TestEjectInstallerMedia(t *testing.T) {
 	}
 	t.Setenv("PATH", binDir)
 
-	if err := ejectInstallerMedia(systemURI, "demo", false); err != nil {
+	if err := EjectInstallerMedia(systemURI, "demo", false); err != nil {
 		t.Fatalf("ejectInstallerMedia: %v", err)
 	}
 	data, err := os.ReadFile(logPath)
@@ -98,7 +98,7 @@ func TestClearInstallerBoot(t *testing.T) {
 	}
 	t.Setenv("PATH", binDir)
 
-	if err := clearInstallerBoot(systemURI, "demo"); err != nil {
+	if err := ClearInstallerBoot(systemURI, "demo"); err != nil {
 		t.Fatalf("clearInstallerBoot: %v", err)
 	}
 	data, err := os.ReadFile(definedPath)
@@ -123,7 +123,7 @@ func TestEnsureSSHKeyRequiresUserKey(t *testing.T) {
 			Source:       Source{Type: sourceType, Path: "/tmp/source"},
 			Provisioners: []Provisioner{{Type: "shell", Inline: "true"}},
 		}
-		err := ensureSSHKey(cfg, projectLayout{AssetDir: t.TempDir()})
+		err := EnsureSSHKey(cfg, projectLayout{AssetDir: t.TempDir()})
 		if err == nil || !strings.Contains(err.Error(), "ssh.key is required") {
 			t.Fatalf("source %q: error = %v, want ssh.key requirement", sourceType, err)
 		}
@@ -143,7 +143,7 @@ func TestWaitForIPv4PrefersARP(t *testing.T) {
 	}
 	t.Setenv("PATH", binDir)
 
-	got, err := waitForIPv4(systemURI, "demo", 2*time.Second)
+	got, err := WaitForIPv4(systemURI, "demo", 2*time.Second)
 	if err != nil {
 		t.Fatalf("waitForIPv4: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestFinishInstallerSSHCompletionSkipsShutdown(t *testing.T) {
 		InstallerCompletion: "ssh",
 		InstallPhase:        installPhaseInstalling,
 	}
-	if err := finishInstaller(&Config{}, st, projectLayout{}, false); err != nil {
+	if err := FinishInstaller(&Config{}, st, projectLayout{}, false); err != nil {
 		t.Fatalf("finishInstaller: %v", err)
 	}
 }
@@ -212,7 +212,7 @@ func TestProvisionTimeouts(t *testing.T) {
 		{"override", &State{InstallerType: "windows_autounattend", InstallerCompletion: "ssh"}, 45 * time.Minute, 45 * time.Minute, 45 * time.Minute},
 	}
 	for _, tc := range cases {
-		gotIP, gotSSH := provisionTimeouts(tc.st, tc.override)
+		gotIP, gotSSH := ProvisionTimeouts(tc.st, tc.override)
 		if gotIP != tc.wantIP || gotSSH != tc.wantSSH {
 			t.Errorf("%s: timeouts = %s/%s, want %s/%s", tc.name, gotIP, gotSSH, tc.wantIP, tc.wantSSH)
 		}

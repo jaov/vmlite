@@ -1,13 +1,11 @@
-package main
+package provision
 
 import (
 	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,29 +14,32 @@ import (
 	"strings"
 	"time"
 
+	"vmlite/internal/config"
+	"vmlite/internal/host"
 	guestinstall "vmlite/internal/installer"
+	"vmlite/internal/libvirt"
 	"vmlite/internal/plan"
+	"vmlite/internal/state"
 )
 
-func newStateFlagSet(name string) *flag.FlagSet {
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	return fs
-}
+type Config = config.Config
+type Source = config.Source
+type State = state.State
+type projectLayout = state.ProjectLayout
+type Provisioner = config.Provisioner
+type ProvisionRecord = state.ProvisionRecord
 
-func parseConfigArgs(fs *flag.FlagSet, args []string) (string, error) {
-	if err := fs.Parse(args); err != nil {
-		return "", errUsage
-	}
-	rest := fs.Args()
-	if len(rest) > 1 {
-		return "", errUsage
-	}
-	if len(rest) == 1 {
-		return rest[0], nil
-	}
-	return "vm.json", nil
-}
+const (
+	installPhaseInstalling = state.PhaseInstalling
+	installPhaseInstalled  = state.PhaseInstalled
+	systemURI              = host.SystemURI
+	sessionURI             = host.SessionURI
+	sourceCloudImage       = config.SourceCloudImage
+	sourceISO              = config.SourceISO
+	sourceDisk             = config.SourceDisk
+	sourceNone             = config.SourceNone
+	networkModeUser        = config.NetworkModeUser
+)
 
 func derivePublicKey(privatePath string) (string, error) {
 	pubPath := privatePath + ".pub"
@@ -55,7 +56,7 @@ func derivePublicKey(privatePath string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func ensureSSHKey(cfg *Config, layout projectLayout) error {
+func EnsureSSHKey(cfg *Config, layout projectLayout) error {
 	if !cfg.NeedsSSH() {
 		return nil
 	}
@@ -105,12 +106,12 @@ func ensureSSHKey(cfg *Config, layout projectLayout) error {
 	return nil
 }
 
-func waitForIPv4(uri, name string, timeout time.Duration) (string, error) {
+func WaitForIPv4(uri, name string, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
 	var last string
 	for time.Now().Before(deadline) {
 		for _, source := range []string{"arp", "lease"} {
-			out, err := runVirsh(uri, "domifaddr", name, "--source", source)
+			out, err := libvirt.Run(uri, "domifaddr", name, "--source", source)
 			last = out
 			if err != nil {
 				continue
@@ -129,7 +130,7 @@ func waitForIPv4(uri, name string, timeout time.Duration) (string, error) {
 	return "", fmt.Errorf("no guest IPv4 lease for %q within %s:\n%s", name, timeout, last)
 }
 
-func waitForSSH(ctx context.Context, runner *plan.SSHRunner, timeout time.Duration) error {
+func WaitForSSH(ctx context.Context, runner *plan.SSHRunner, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	var last error
 	for time.Now().Before(deadline) {
@@ -229,7 +230,7 @@ func (s *shellStep) Apply(ctx context.Context, r plan.Runner) error {
 	})
 	s.state.Provisioned = records
 	s.state.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	return saveState(s.stateFile, s.state)
+	return state.Save(s.stateFile, s.state)
 }
 
 func guestSSHRunner(cfg *Config, st *State, ip string, dryRun bool) *plan.SSHRunner {
@@ -250,7 +251,7 @@ func guestSSHRunner(cfg *Config, st *State, ip string, dryRun bool) *plan.SSHRun
 // finishInstaller waits for an unattended installer to reboot, ejects the
 // installer CD, and starts the installed disk. It also accepts an already
 // running installed system if SSH is reachable.
-func finishInstaller(cfg *Config, st *State, layout projectLayout, dryRun bool) error {
+func FinishInstaller(cfg *Config, st *State, layout projectLayout, dryRun bool) error {
 	if st.InstallPhase == installPhaseInstalled {
 		return nil
 	}
@@ -266,16 +267,16 @@ func finishInstaller(cfg *Config, st *State, layout projectLayout, dryRun bool) 
 	}
 
 	if strings.TrimSpace(st.SSHKeyPath) != "" {
-		if ip, err := waitForIPv4(st.LibvirtURI, st.Name, 15*time.Second); err == nil {
+		if ip, err := WaitForIPv4(st.LibvirtURI, st.Name, 15*time.Second); err == nil {
 			runner := guestSSHRunner(cfg, st, ip, false)
 			attempt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			err := runner.Run(attempt, plan.Command{Name: "true"})
 			cancel()
 			if err == nil {
-				if err := ejectInstallerMedia(st.LibvirtURI, st.Name, true); err != nil {
+				if err := EjectInstallerMedia(st.LibvirtURI, st.Name, true); err != nil {
 					return err
 				}
-				if err := clearInstallerBoot(st.LibvirtURI, st.Name); err != nil {
+				if err := ClearInstallerBoot(st.LibvirtURI, st.Name); err != nil {
 					return err
 				}
 				return markInstalled(st, layout)
@@ -286,19 +287,19 @@ func finishInstaller(cfg *Config, st *State, layout projectLayout, dryRun bool) 
 	timeout := 30 * time.Minute
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		text, exists := domainStatus(st.LibvirtURI, st.Name)
+		text, exists := libvirt.Status(st.LibvirtURI, st.Name)
 		if !exists {
 			return fmt.Errorf("installer VM %q disappeared", st.Name)
 		}
 		text = strings.TrimSpace(text)
 		if strings.Contains(text, "shut off") {
-			if err := ejectInstallerMedia(st.LibvirtURI, st.Name, false); err != nil {
+			if err := EjectInstallerMedia(st.LibvirtURI, st.Name, false); err != nil {
 				return err
 			}
-			if err := clearInstallerBoot(st.LibvirtURI, st.Name); err != nil {
+			if err := ClearInstallerBoot(st.LibvirtURI, st.Name); err != nil {
 				return err
 			}
-			if out, err := runVirsh(st.LibvirtURI, "start", st.Name); err != nil {
+			if out, err := libvirt.Run(st.LibvirtURI, "start", st.Name); err != nil {
 				return fmt.Errorf("start installed VM %q: %w: %s", st.Name, err, strings.TrimSpace(out))
 			}
 			return markInstalled(st, layout)
@@ -314,11 +315,11 @@ func finishInstaller(cfg *Config, st *State, layout projectLayout, dryRun bool) 
 func markInstalled(st *State, layout projectLayout) error {
 	st.InstallPhase = installPhaseInstalled
 	st.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	return saveState(layout.StateFile, st)
+	return state.Save(layout.StateFile, st)
 }
 
-func ejectInstallerMedia(uri, name string, live bool) error {
-	out, err := runVirsh(uri, "domblklist", name, "--details")
+func EjectInstallerMedia(uri, name string, live bool) error {
+	out, err := libvirt.Run(uri, "domblklist", name, "--details")
 	if err != nil {
 		return fmt.Errorf("list media for %q: %w: %s", name, err, strings.TrimSpace(out))
 	}
@@ -336,7 +337,7 @@ func ejectInstallerMedia(uri, name string, live bool) error {
 			args = append(args, "--live")
 		}
 		args = append(args, "--config")
-		if out, err := runVirsh(uri, args...); err != nil {
+		if out, err := libvirt.Run(uri, args...); err != nil {
 			if strings.Contains(out, "doesn't have media") {
 				continue
 			}
@@ -354,8 +355,8 @@ var installerOnRebootXML = regexp.MustCompile(`(?s)\s*<on_reboot>.*?</on_reboot>
 // clearInstallerBoot removes the direct kernel/initrd boot described by
 // virt-install's --location install phase. Without this the defined domain
 // would boot the installer kernel again after the installer reboots.
-func clearInstallerBoot(uri, name string) error {
-	out, err := runVirsh(uri, "dumpxml", name)
+func ClearInstallerBoot(uri, name string) error {
+	out, err := libvirt.Run(uri, "dumpxml", name)
 	if err != nil {
 		return fmt.Errorf("dump domain %q: %w: %s", name, err, strings.TrimSpace(out))
 	}
@@ -385,13 +386,13 @@ func clearInstallerBoot(uri, name string) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close domain XML: %w", err)
 	}
-	if out, err := runVirsh(uri, "define", tmpName); err != nil {
+	if out, err := libvirt.Run(uri, "define", tmpName); err != nil {
 		return fmt.Errorf("redefine installed VM %q: %w: %s", name, err, strings.TrimSpace(out))
 	}
 	return nil
 }
 
-func provisionTimeouts(st *State, override time.Duration) (time.Duration, time.Duration) {
+func ProvisionTimeouts(st *State, override time.Duration) (time.Duration, time.Duration) {
 	ipTimeout := 5 * time.Minute
 	sshTimeout := 5 * time.Minute
 	if st.InstallerType != "" {
@@ -509,7 +510,7 @@ func readProvisionUploads(p Provisioner, layout projectLayout) ([]provisionUploa
 	return uploads, nil
 }
 
-func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun bool, timeout time.Duration) error {
+func ProvisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun bool, timeout time.Duration) error {
 	if len(cfg.Provisioners) == 0 && st.InstallerType == "" {
 		return nil
 	}
@@ -525,7 +526,7 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 			return fmt.Errorf("shell provisioners require a guest-visible network, not network.mode=user")
 		}
 	}
-	if text, exists := domainStatus(st.LibvirtURI, st.Name); !exists {
+	if text, exists := libvirt.Status(st.LibvirtURI, st.Name); !exists {
 		return fmt.Errorf("VM %q is missing", st.Name)
 	} else if st.InstallerType == "" && !strings.Contains(text, "running") {
 		return fmt.Errorf("VM %q is not running", st.Name)
@@ -536,7 +537,7 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 	}
 
 	if st.InstallerType != "" {
-		if err := finishInstaller(cfg, st, layout, dryRun); err != nil {
+		if err := FinishInstaller(cfg, st, layout, dryRun); err != nil {
 			return err
 		}
 		if len(cfg.Provisioners) == 0 && !completionSSH {
@@ -551,22 +552,22 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 			ip = "<guest-ip>"
 		}
 	} else {
-		ipTimeout, _ := provisionTimeouts(st, timeout)
+		ipTimeout, _ := ProvisionTimeouts(st, timeout)
 		var err error
-		ip, err = waitForIPv4(st.LibvirtURI, st.Name, ipTimeout)
+		ip, err = WaitForIPv4(st.LibvirtURI, st.Name, ipTimeout)
 		if err != nil {
 			return err
 		}
 		st.IP = ip
-		if err := saveState(layout.StateFile, st); err != nil {
+		if err := state.Save(layout.StateFile, st); err != nil {
 			return err
 		}
 	}
 
 	runner := guestSSHRunner(cfg, st, ip, dryRun)
 	if !dryRun {
-		_, sshTimeout := provisionTimeouts(st, timeout)
-		if err := waitForSSH(context.Background(), runner, sshTimeout); err != nil {
+		_, sshTimeout := ProvisionTimeouts(st, timeout)
+		if err := WaitForSSH(context.Background(), runner, sshTimeout); err != nil {
 			return err
 		}
 		if completionSSH && st.InstallPhase != installPhaseInstalled {
@@ -629,46 +630,4 @@ func provisionVM(cfg *Config, st *State, layout projectLayout, force, dryRun boo
 	}
 
 	return steps.Run(context.Background(), runner, os.Stdout)
-}
-
-func provisionFlagSet() (*flag.FlagSet, *string, *bool, *bool, *time.Duration) {
-	fs := newStateFlagSet("provision")
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
-	force := fs.Bool("force", false, "rerun once-provisioners")
-	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
-	timeout := fs.Duration("timeout", 0, "maximum wait for guest readiness (default: 5m, or 30m for SSH-completing installers)")
-	return fs, stateDir, force, dryRun, timeout
-}
-
-func runProvision(args []string) error {
-	fs, stateDir, force, dryRun, timeout := provisionFlagSet()
-	configPath, err := parseConfigArgs(fs, args)
-	if err != nil {
-		return err
-	}
-	if *timeout < 0 {
-		return fmt.Errorf("timeout must not be negative")
-	}
-
-	cfg, err := LoadConfig(configPath)
-	if err != nil {
-		return err
-	}
-	layout, err := newProjectLayout(configPath, *stateDir, cfg.Name)
-	if err != nil {
-		return err
-	}
-	lock, err := acquireProjectLock(layout)
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
-	st, err := loadState(layout.StateFile)
-	if err != nil {
-		return err
-	}
-	if st == nil {
-		return fmt.Errorf("no state for %q at %s", cfg.Name, layout.StateFile)
-	}
-	return provisionVM(cfg, st, layout, *force, *dryRun, *timeout)
 }
