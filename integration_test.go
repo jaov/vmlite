@@ -191,39 +191,6 @@ func registerCleanup(t *testing.T, uri, name string) {
 	})
 }
 
-type domainXML struct {
-	Memory struct {
-		Unit  string `xml:"unit,attr"`
-		Value int    `xml:",chardata"`
-	} `xml:"memory"`
-	VCPU struct {
-		Value int `xml:",chardata"`
-	} `xml:"vcpu"`
-	Devices struct {
-		Disks []struct {
-			Source struct {
-				File string `xml:"file,attr"`
-			} `xml:"source"`
-		} `xml:"disk"`
-		Interfaces []struct {
-			Type   string `xml:"type,attr"`
-			Source struct {
-				Network string `xml:"network,attr"`
-			} `xml:"source"`
-		} `xml:"interface"`
-		Filesystems []struct {
-			Type       string `xml:"type,attr"`
-			AccessMode string `xml:"accessmode,attr"`
-			Source     struct {
-				Dir string `xml:"dir,attr"`
-			} `xml:"source"`
-			Target struct {
-				Dir string `xml:"dir,attr"`
-			} `xml:"target"`
-		} `xml:"filesystem"`
-	} `xml:"devices"`
-}
-
 func fetchDomain(t *testing.T, uri, name string) domainXML {
 	t.Helper()
 	out, err := virsh(t, uri, "dumpxml", name)
@@ -240,17 +207,11 @@ func fetchDomain(t *testing.T, uri, name string) domainXML {
 
 func memoryMiB(t *testing.T, d domainXML) int {
 	t.Helper()
-	switch d.Memory.Unit {
-	case "", "KiB":
-		return d.Memory.Value / 1024
-	case "MiB":
-		return d.Memory.Value
-	case "GiB":
-		return d.Memory.Value * 1024
-	default:
-		t.Fatalf("unexpected memory unit %q", d.Memory.Unit)
-		return 0
+	value, err := domainMemoryMiB(d)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return int(value)
 }
 
 func createVM(t *testing.T, uri string, mounts []Mount) string {
