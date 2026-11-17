@@ -69,3 +69,28 @@ func TestRemoteCommandQuoting(t *testing.T) {
 		t.Fatalf("remoteCommand = %q, want %q", got, want)
 	}
 }
+
+func TestRemoteCommandEnvAfterSudo(t *testing.T) {
+	got := remoteCommand(Command{
+		Name: "bash",
+		Args: []string{"-s"},
+		Env:  []string{"APP_ENV=dev", "RETRIES=3"},
+		Sudo: true,
+	})
+	want := `sudo -n env APP_ENV=dev RETRIES=3 bash -s`
+	if got != want {
+		t.Fatalf("remoteCommand = %q, want %q", got, want)
+	}
+}
+
+func TestRemoteCommandEnvWithoutSudo(t *testing.T) {
+	got := remoteCommand(Command{
+		Name: "bash",
+		Args: []string{"-s"},
+		Env:  []string{"APP_ENV=dev"},
+	})
+	want := `env APP_ENV=dev bash -s`
+	if got != want {
+		t.Fatalf("remoteCommand = %q, want %q", got, want)
+	}
+}

@@ -50,13 +50,17 @@ func shellQuoteArg(s string) string {
 }
 
 func remoteCommand(cmd Command) string {
+	var prefix []string
+	if cmd.Sudo {
+		prefix = append(prefix, "sudo", "-n")
+	}
+
 	parts := append([]string{cmd.Name}, cmd.Args...)
 	if len(cmd.Env) > 0 {
 		parts = append([]string{"env"}, append(append([]string{}, cmd.Env...), parts...)...)
 	}
-	if cmd.Sudo {
-		parts = append([]string{"sudo", "-n"}, parts...)
-	}
+	parts = append(prefix, parts...)
+
 	for i, part := range parts {
 		parts[i] = shellQuoteArg(part)
 	}
