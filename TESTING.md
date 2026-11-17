@@ -457,15 +457,22 @@ VMLITE_TEST_FEDORA_IMAGE=/tmp/Fedora-Cloud-Base-Generic-45-1.4.x86_64.qcow2 \
   ./scripts/package-smoke-test.sh fedora dist/vmlite-0.1.0-1.x86_64.rpm
 ```
 
-The script creates a VM with `vmlite up`, copies the package with `vmlite scp`,
-installs and verifies it over `vmlite ssh`, uninstalls it, and destroys the VM.
+The script generates a `vm.json` with a cloud image and a `provisioners` entry.
+The provisioner uploads the package, receives `VMLITE_PACKAGE` through `env`,
+installs and verifies it, uninstalls it, and prints `PACKAGE_SMOKE_OK`. `vmlite
+up` auto-provisions the VM. The script then checks `vmlite status` and runs
+`vmlite provision` again to verify the `once` provisioner is skipped as already
+satisfied.
+
 It checks:
 
+- the full JSON config path, including `provisioners`, `uploads`, and `env`
 - dependency resolution by `apt` or `dnf`
 - `/usr/bin/vmlite` and `vmlite version`
 - `vmlite --help` and `vmlite doctor`
 - the man page
 - removal of the binary, package, and man page
+- provisioner state and idempotent skipping
 
 Fedora 45 and Debian 12 were verified with these commands. Debian 13's
 genericcloud image boot-looped in this environment, so Debian 12 is the

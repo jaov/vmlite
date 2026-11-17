@@ -5,8 +5,8 @@ usage() {
   cat >&2 <<'EOF'
 usage: package-smoke-test.sh debian|fedora PACKAGE
 
-Install a vmlite .deb or .rpm in a fresh cloud-image VM, verify the installed
-files and CLI, then uninstall it.
+Install a vmlite .deb or .rpm in a fresh cloud-image VM using a provisioner,
+verify the installed files and CLI, then uninstall it.
 
 Required environment:
   VMLITE_TEST_DEBIAN_IMAGE   Debian generic cloud qcow2 (for debian)
@@ -44,6 +44,7 @@ if [[ ! -f "$package" ]]; then
   echo "package not found: $package" >&2
   exit 1
 fi
+package="$(readlink -f "$package")"
 
 vmlite="${VMLITE_BIN:-vmlite}"
 if ! command -v "$vmlite" >/dev/null 2>&1; then
@@ -57,14 +58,14 @@ case "$os" in
     image="${VMLITE_TEST_DEBIAN_IMAGE:-}"
     variant="debian12"
     remote_pkg="/tmp/vmlite-package.deb"
-    install_cmd="sudo apt-get -qq update && sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y $remote_pkg"
+    install_cmd='sudo apt-get -qq update && sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y $VMLITE_PACKAGE'
     remove_cmd='sudo DEBIAN_FRONTEND=noninteractive apt-get -qq remove -y vmlite'
     ;;
   fedora)
     image="${VMLITE_TEST_FEDORA_IMAGE:-}"
     variant="fedora42"
     remote_pkg="/tmp/vmlite-package.rpm"
-    install_cmd="sudo dnf -q install -y --nogpgcheck $remote_pkg"
+    install_cmd='sudo dnf -q install -y --nogpgcheck $VMLITE_PACKAGE'
     remove_cmd='sudo dnf -q remove -y vmlite'
     ;;
 esac
@@ -88,6 +89,9 @@ name="vmlite-pkgtest-$os-$$"
 config="$work/vm.json"
 state="$work/.vmlite"
 pool="$(basename "$work")"
+up_log="$work/up.log"
+status_log="$work/status.log"
+skip_log="$work/provision-skip.log"
 
 cleanup() {
   local rc=$?
@@ -104,6 +108,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# The provisioner runs through sudo, so the env wrapper must stay after
+# sudo -n. VMLITE_PACKAGE is provided by the provisioner env block.
+inline="set -e; test -s \$VMLITE_PACKAGE; echo package=\$VMLITE_PACKAGE; $install_cmd; command -v vmlite; vmlite version; vmlite --help >/dev/null; test -f /usr/share/man/man1/vmlite.1; vmlite doctor >/tmp/vmlite-doctor.txt 2>&1 || true; cat /tmp/vmlite-doctor.txt; grep -E 'vmlite: /usr/(s?bin)/vmlite' /tmp/vmlite-doctor.txt; $remove_cmd; hash -r; ! command -v vmlite >/dev/null 2>&1; test ! -e /usr/bin/vmlite; test ! -e /usr/share/man/man1/vmlite.1; echo PACKAGE_SMOKE_OK"
+
 cat >"$config" <<EOF
 {
   "name": "$name",
@@ -118,29 +126,32 @@ cat >"$config" <<EOF
   "disk": { "size": 8, "path": "$work/disk.qcow2", "format": "qcow2" },
   "network": { "mode": "default" },
   "graphics": { "type": "none" },
-  "ssh": { "user": "vmlite" }
+  "ssh": { "user": "vmlite" },
+  "provisioners": [
+    {
+      "type": "shell",
+      "run": "once",
+      "uploads": [
+        { "source": "$package", "target": "$remote_pkg" }
+      ],
+      "env": {
+        "VMLITE_PACKAGE": "$remote_pkg",
+        "VMLITE_PACKAGE_KIND": "$os"
+      },
+      "inline": "$inline"
+    }
+  ]
 }
 EOF
 
-echo "Creating $os VM and installing $package"
-"$vmlite" up --connect "$uri" --state-dir "$state" "$config"
-"$vmlite" scp --state-dir "$state" --timeout 15m "$package" "$remote_pkg" "$config"
+echo "Creating $os VM and installing $package through a provisioner"
+"$vmlite" up --connect "$uri" --state-dir "$state" "$config" 2>&1 | tee "$up_log"
+grep -F 'PACKAGE_SMOKE_OK' "$up_log" >/dev/null
 
-check_cmd="set -e
-$install_cmd
-command -v vmlite
-vmlite version
-vmlite --help >/dev/null
-test -f /usr/share/man/man1/vmlite.1
-if vmlite doctor >/tmp/vmlite-doctor.txt 2>&1; then cat /tmp/vmlite-doctor.txt; else cat /tmp/vmlite-doctor.txt; fi
-grep -F 'vmlite: /usr/bin/vmlite' /tmp/vmlite-doctor.txt
-$remove_cmd
-hash -r
-if command -v vmlite >/dev/null 2>&1; then echo 'binary still present' >&2; exit 1; fi
-test ! -e /usr/bin/vmlite
-test ! -e /usr/share/man/man1/vmlite.1
-echo PACKAGE_SMOKE_OK"
+"$vmlite" status --state-dir "$state" "$config" 2>&1 | tee "$status_log"
+grep -F 'Provisioned: 1 script(s)' "$status_log" >/dev/null
 
-"$vmlite" ssh --state-dir "$state" --timeout 15m --command "$check_cmd" "$config"
+"$vmlite" provision --state-dir "$state" "$config" 2>&1 | tee "$skip_log"
+grep -F 'already satisfied' "$skip_log" >/dev/null
 
 echo "Package smoke test passed for $os"
