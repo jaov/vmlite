@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"vmlite/internal/libvirt"
 )
 
 var (
@@ -191,23 +193,23 @@ func registerCleanup(t *testing.T, uri, name string) {
 	})
 }
 
-func fetchDomain(t *testing.T, uri, name string) domainXML {
+func fetchDomain(t *testing.T, uri, name string) libvirt.DomainXML {
 	t.Helper()
 	out, err := virsh(t, uri, "dumpxml", name)
 	if err != nil {
 		t.Fatalf("dumpxml %s: %v\n%s", name, err, out)
 	}
 
-	var d domainXML
+	var d libvirt.DomainXML
 	if err := xml.Unmarshal([]byte(out), &d); err != nil {
 		t.Fatalf("parse dumpxml %s: %v", name, err)
 	}
 	return d
 }
 
-func memoryMiB(t *testing.T, d domainXML) int {
+func memoryMiB(t *testing.T, d libvirt.DomainXML) int {
 	t.Helper()
-	value, err := domainMemoryMiB(d)
+	value, err := libvirt.MemoryMiB(d)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,32 +15,6 @@ import (
 )
 
 var errNotRunning = errors.New("VM is not running")
-
-func runVirsh(uri string, args ...string) (string, error) {
-	full := append([]string{"-c", uri}, args...)
-	out, err := exec.Command("virsh", full...).CombinedOutput()
-	return string(out), err
-}
-
-func domainStatus(uri, name string) (string, bool) {
-	out, err := runVirsh(uri, "domstate", name)
-	if err != nil {
-		return "", false
-	}
-	return strings.TrimSpace(out), true
-}
-
-func domainUUID(uri, name string) string {
-	out, err := runVirsh(uri, "domuuid", name)
-	if err != nil {
-		return ""
-	}
-	fields := strings.Fields(out)
-	if len(fields) == 0 {
-		return ""
-	}
-	return fields[len(fields)-1]
-}
 
 func resolveConnection(flagURI string) (string, error) {
 	uri := flagURI

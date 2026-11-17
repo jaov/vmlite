@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"vmlite/internal/libvirt"
 )
 
 type inspectPaths struct {
@@ -200,11 +202,11 @@ func buildInspectReport(st *State, layout projectLayout) *inspectReport {
 	report.State = strings.TrimSpace(stateText)
 	report.Running = strings.Contains(report.State, "running")
 
-	var domain domainXML
+	var domain libvirt.DomainXML
 	if out, err := runVirsh(st.LibvirtURI, "dumpxml", st.Name); err == nil {
 		if err := xml.Unmarshal([]byte(out), &domain); err == nil {
 			report.UUID = domain.UUID
-			if mib, err := domainMemoryMiB(domain); err == nil {
+			if mib, err := libvirt.MemoryMiB(domain); err == nil {
 				report.MemoryMiB = mib
 			}
 			report.VCPUs = domain.VCPU.Value
@@ -239,7 +241,7 @@ func buildInspectReport(st *State, layout projectLayout) *inspectReport {
 	return report
 }
 
-func inspectDOMDisk(uri, name string, disk domainDisk) inspectDisk {
+func inspectDOMDisk(uri, name string, disk libvirt.DomainDisk) inspectDisk {
 	item := inspectDisk{
 		Target:   disk.Target.Dev,
 		Bus:      disk.Target.Bus,
