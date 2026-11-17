@@ -31,11 +31,11 @@ func TestEnsureSSHKeyGenerated(t *testing.T) {
 	if _, err := os.Stat(cfg.SSH.Key); err != nil {
 		t.Fatalf("private key missing: %v", err)
 	}
-	if !strings.HasPrefix(cfg.sshPublicKey, "ssh-ed25519 ") {
-		t.Fatalf("public key = %q", cfg.sshPublicKey)
+	if !strings.HasPrefix(cfg.SSHPublicKey, "ssh-ed25519 ") {
+		t.Fatalf("public key = %q", cfg.SSHPublicKey)
 	}
-	if !cfg.sshKeyGenerated {
-		t.Fatal("sshKeyGenerated = false")
+	if !cfg.SSHKeyGenerated {
+		t.Fatal("SSHKeyGenerated = false")
 	}
 }
 

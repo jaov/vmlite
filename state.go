@@ -1,9 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -11,28 +8,6 @@ import (
 
 	guestinstall "vmlite/internal/installer"
 )
-
-func hashConfig(cfg *Config) (string, error) {
-	// Provisioning and SSH settings are not VM shape; changing a script must
-	// not require recreating the domain.
-	clone := *cfg
-	clone.SSH = SSHConfig{}
-	clone.Provisioners = nil
-	data, err := json.Marshal(&clone)
-	if err != nil {
-		return "", fmt.Errorf("hash config: %w", err)
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:]), nil
-}
-
-// applyProjectDefaults makes the managed disk location deterministic.
-func applyProjectDefaults(cfg *Config, layout projectLayout) {
-	cfg.assetDir = layout.AssetDir
-	if cfg.Source.Type == sourceCloudImage && strings.TrimSpace(cfg.Disk.Path) == "" {
-		cfg.Disk.Path = filepath.Join(layout.AssetDir, "disk.qcow2")
-	}
-}
 
 func newState(cfg *Config, layout projectLayout, uri, configHash, uuid string) (*State, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -68,17 +43,17 @@ func newState(cfg *Config, layout projectLayout, uri, configHash, uuid string) (
 			st.PoolName = filepath.Base(layout.AssetDir)
 		}
 	}
-	if cfg.needsSeed() {
-		seed, err := cfg.seedPath()
+	if cfg.NeedsSeed() {
+		seed, err := cfg.SeedPath()
 		if err != nil {
 			return nil, err
 		}
 		st.SeedPath = seed
 	}
-	if cfg.hasInstaller() {
+	if cfg.HasInstaller() {
 		st.InstallerType = cfg.Source.Installer.Type
 		st.InstallPhase = installPhaseInstalling
-		spec, err := cfg.installerSpec()
+		spec, err := cfg.InstallerSpec()
 		if err != nil {
 			return nil, err
 		}
@@ -88,14 +63,14 @@ func newState(cfg *Config, layout projectLayout, uri, configHash, uuid string) (
 		}
 		st.InstallerCompletion = string(completion)
 		if spec.Seed != nil {
-			seed, err := cfg.installerSeedPath()
+			seed, err := cfg.InstallerSeedPath()
 			if err != nil {
 				return nil, err
 			}
 			st.SeedPath = seed
 		}
 		if len(spec.InjectFiles) > 0 {
-			iso, err := cfg.installerISOPath()
+			iso, err := cfg.InstallerISOPath()
 			if err != nil {
 				return nil, err
 			}
@@ -111,8 +86,8 @@ func newState(cfg *Config, layout projectLayout, uri, configHash, uuid string) (
 			return nil, fmt.Errorf("resolve ssh key %q: %w", cfg.SSH.Key, err)
 		}
 		st.SSHKeyPath = key
-		st.SSHKeyGenerated = cfg.sshKeyGenerated
-		st.SSHUser = cfg.sshUser()
+		st.SSHKeyGenerated = cfg.SSHKeyGenerated
+		st.SSHUser = cfg.SSHUser()
 	}
 	return st, nil
 }

@@ -289,15 +289,15 @@ func TestBuildVirtInstallArgsISOInstaller(t *testing.T) {
 		Path:      iso,
 		Installer: &Installer{Type: "ubuntu_autoinstall"},
 	}
-	cfg.assetDir = t.TempDir()
-	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
+	cfg.AssetDir = t.TempDir()
+	cfg.SSHPublicKey = "ssh-ed25519 AAAA test"
 
 	got, err := buildVirtInstallArgs(&cfg, systemURI)
 	if err != nil {
 		t.Fatalf("buildVirtInstallArgs: %v", err)
 	}
 
-	seedPath := filepath.Join(cfg.assetDir, "demo-installer-seed.iso")
+	seedPath := filepath.Join(cfg.AssetDir, "demo-installer-seed.iso")
 	if !containsAll(got,
 		"--os-variant", "detect=on,require=off",
 		"--boot", "hd,cdrom",
@@ -323,14 +323,14 @@ func TestBuildVirtInstallArgsDebianPreseed(t *testing.T) {
 		Path:      iso,
 		Installer: &Installer{Type: "debian_preseed"},
 	}
-	cfg.assetDir = t.TempDir()
-	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
+	cfg.AssetDir = t.TempDir()
+	cfg.SSHPublicKey = "ssh-ed25519 AAAA test"
 
 	got, err := buildVirtInstallArgs(&cfg, systemURI)
 	if err != nil {
 		t.Fatalf("buildVirtInstallArgs: %v", err)
 	}
-	remastered := filepath.Join(cfg.assetDir, "demo-installer.iso")
+	remastered := filepath.Join(cfg.AssetDir, "demo-installer.iso")
 	if !containsAll(got,
 		"--boot", "hd,cdrom",
 		"--check", "disk_size=off",
@@ -340,7 +340,7 @@ func TestBuildVirtInstallArgsDebianPreseed(t *testing.T) {
 	) {
 		t.Fatalf("args missing Debian installer media: %q", got)
 	}
-	if containsAll(got, "--disk", "path="+filepath.Join(cfg.assetDir, "demo-installer-seed.iso")) {
+	if containsAll(got, "--disk", "path="+filepath.Join(cfg.AssetDir, "demo-installer-seed.iso")) {
 		t.Fatalf("Debian preseed should be injected, not attached as a seed: %q", got)
 	}
 }
@@ -355,14 +355,14 @@ func TestBuildVirtInstallArgsFedoraKickstart(t *testing.T) {
 		Path:      iso,
 		Installer: &Installer{Type: "fedora_kickstart"},
 	}
-	cfg.assetDir = t.TempDir()
-	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
+	cfg.AssetDir = t.TempDir()
+	cfg.SSHPublicKey = "ssh-ed25519 AAAA test"
 
 	got, err := buildVirtInstallArgs(&cfg, systemURI)
 	if err != nil {
 		t.Fatalf("buildVirtInstallArgs: %v", err)
 	}
-	seedPath := filepath.Join(cfg.assetDir, "demo-installer-seed.iso")
+	seedPath := filepath.Join(cfg.AssetDir, "demo-installer-seed.iso")
 	if !containsAll(got,
 		"--boot", "hd,cdrom",
 		"--check", "disk_size=off",
@@ -385,8 +385,8 @@ func TestBuildVirtInstallArgsISOInstallerUEFI(t *testing.T) {
 		Path:      "/tmp/ubuntu.iso",
 		Installer: &Installer{Type: "ubuntu_autoinstall"},
 	}
-	cfg.assetDir = t.TempDir()
-	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
+	cfg.AssetDir = t.TempDir()
+	cfg.SSHPublicKey = "ssh-ed25519 AAAA test"
 
 	got, err := buildVirtInstallArgs(&cfg, systemURI)
 	if err != nil {
@@ -448,14 +448,14 @@ func TestBuildVirtInstallArgsWindowsAutoUnattend(t *testing.T) {
 			Inline: "<unattend/>",
 		},
 	}
-	cfg.assetDir = t.TempDir()
-	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
+	cfg.AssetDir = t.TempDir()
+	cfg.SSHPublicKey = "ssh-ed25519 AAAA test"
 
 	got, err := buildVirtInstallArgs(&cfg, systemURI)
 	if err != nil {
 		t.Fatalf("buildVirtInstallArgs: %v", err)
 	}
-	seedPath := filepath.Join(cfg.assetDir, "demo-installer-seed.iso")
+	seedPath := filepath.Join(cfg.AssetDir, "demo-installer-seed.iso")
 	if !containsAll(got,
 		"--boot", "uefi,loader.secure=on,hd,cdrom",
 		"--tpm", "backend.type=emulator,backend.version=2.0",

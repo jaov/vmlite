@@ -45,7 +45,7 @@ exit 0
 func TestOverlayPathDefault(t *testing.T) {
 	cfg := &Config{Name: "demo", Source: Source{Type: sourceCloudImage, Path: "/tmp/images/base.qcow2"}}
 
-	got, err := cfg.overlayPath()
+	got, err := cfg.OverlayPath()
 	if err != nil {
 		t.Fatalf("overlayPath: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestOverlayPathExplicit(t *testing.T) {
 		Disk:   Disk{Path: "/var/tmp/demo.qcow2"},
 	}
 
-	got, err := cfg.overlayPath()
+	got, err := cfg.OverlayPath()
 	if err != nil {
 		t.Fatalf("overlayPath: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestOverlayPathExplicit(t *testing.T) {
 func TestSeedPath(t *testing.T) {
 	cfg := &Config{Name: "demo", Source: Source{Type: sourceCloudImage, Path: "/tmp/images/base.qcow2"}}
 
-	got, err := cfg.seedPath()
+	got, err := cfg.SeedPath()
 	if err != nil {
 		t.Fatalf("seedPath: %v", err)
 	}
@@ -504,7 +504,7 @@ func TestSourceDiskFormat(t *testing.T) {
 			{diskFormatRaw, diskFormatRaw},
 		} {
 			cfg := &Config{Source: Source{Type: sourceDisk, Path: "/tmp/disk"}, Disk: Disk{Format: tc.format}}
-			got, err := cfg.sourceDiskFormat()
+			got, err := cfg.SourceDiskFormat()
 			if err != nil {
 				t.Fatalf("format %q: %v", tc.format, err)
 			}
@@ -518,7 +518,7 @@ func TestSourceDiskFormat(t *testing.T) {
 		binDir, _ := fakeQEMUImgInfo(t, diskFormatRaw)
 		t.Setenv("PATH", binDir)
 		cfg := &Config{Source: Source{Type: sourceDisk, Path: "/tmp/disk"}, Disk: Disk{Format: diskFormatAuto}}
-		got, err := cfg.sourceDiskFormat()
+		got, err := cfg.SourceDiskFormat()
 		if err != nil {
 			t.Fatalf("sourceDiskFormat: %v", err)
 		}

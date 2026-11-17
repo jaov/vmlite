@@ -69,7 +69,7 @@ func resolveGuestTarget(configPath, stateDir, user string, timeout time.Duration
 		user = st.SSHUser
 	}
 	if user == "" {
-		user = cfg.sshUser()
+		user = cfg.SSHUser()
 	}
 	return &guestTarget{cfg: cfg, st: st, user: user, key: st.SSHKeyPath, ip: ip}, nil
 }

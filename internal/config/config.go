@@ -1,15 +1,20 @@
-package main
+package config
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"vmlite/internal/installer"
+	"vmlite/internal/state"
 )
 
 const (
@@ -69,11 +74,11 @@ type Config struct {
 	SSH          SSHConfig     `json:"ssh,omitempty"`
 	Provisioners []Provisioner `json:"provisioners,omitempty"`
 
-	sshPublicKey    string
-	sshKeyGenerated bool
-	windowsPassword string
-	configDir       string
-	assetDir        string
+	SSHPublicKey    string `json:"-"`
+	SSHKeyGenerated bool   `json:"-"`
+	WindowsPassword string `json:"-"`
+	ConfigDir       string `json:"-"`
+	AssetDir        string `json:"-"`
 }
 
 // SSHConfig controls the guest account used for shell provisioners.
@@ -225,7 +230,7 @@ type ExtraDisk struct {
 }
 
 // LoadConfig reads and validates a JSON configuration file.
-func LoadConfig(path string) (*Config, error) {
+func Load(path string) (*Config, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open config %q: %w", path, err)
@@ -245,7 +250,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("invalid config %q: %w", path, err)
 	}
 	if abs, err := filepath.Abs(path); err == nil {
-		cfg.configDir = filepath.Dir(abs)
+		cfg.ConfigDir = filepath.Dir(abs)
 	}
 
 	return &cfg, nil
@@ -568,3 +573,289 @@ func validateInstaller(inst *Installer) error {
 	}
 	return nil
 }
+
+// detectImageFormat asks qemu-img for a disk image's format.
+func detectImageFormat(path string) (string, error) {
+	cmd := exec.Command("qemu-img", "info", "--output=json", path)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("detect format of %q: %w", path, err)
+	}
+
+	var info struct {
+		Format string `json:"format"`
+	}
+	if err := json.Unmarshal(out, &info); err != nil {
+		return "", fmt.Errorf("parse qemu-img info for %q: %w", path, err)
+	}
+	if info.Format == "" {
+		return "", fmt.Errorf("qemu-img reported no format for %q", path)
+	}
+	return info.Format, nil
+}
+
+// overlayPath returns the qcow2 overlay path used for a cloud image.
+func (c *Config) overlayPath() (string, error) {
+	if c.Source.Type != sourceCloudImage {
+		return "", fmt.Errorf("overlay is only used with source.type %q", sourceCloudImage)
+	}
+	if strings.TrimSpace(c.Disk.Path) != "" {
+		return filepath.Abs(c.Disk.Path)
+	}
+
+	image, err := filepath.Abs(c.Source.Path)
+	if err != nil {
+		return "", fmt.Errorf("resolve image %q: %w", c.Source.Path, err)
+	}
+	return filepath.Join(filepath.Dir(image), c.Name+"-overlay.qcow2"), nil
+}
+
+// seedPath returns the NoCloud seed ISO path for a cloud image.
+func (c *Config) seedPath() (string, error) {
+	overlay, err := c.overlayPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(overlay), c.Name+"-seed.iso"), nil
+}
+
+// baseFormat is the backing format used when creating the overlay.
+func (c *Config) baseFormat() (string, error) {
+	switch c.Disk.Format {
+	case "", diskFormatAuto:
+		return detectImageFormat(c.Source.Path)
+	case diskFormatQCOW2, diskFormatRaw:
+		return c.Disk.Format, nil
+	default:
+		return "", fmt.Errorf("unsupported disk.format %q", c.Disk.Format)
+	}
+}
+
+// newDiskFormat is the format for a newly created primary disk.
+func (c *Config) newDiskFormat() string {
+	if c.Disk.Format == diskFormatRaw {
+		return diskFormatRaw
+	}
+	return diskFormatQCOW2
+}
+
+// sourceDiskFormat is the format of an imported source disk.
+func (c *Config) sourceDiskFormat() (string, error) {
+	switch c.Disk.Format {
+	case "", diskFormatAuto:
+		return detectImageFormat(c.Source.Path)
+	case diskFormatQCOW2, diskFormatRaw:
+		return c.Disk.Format, nil
+	default:
+		return "", fmt.Errorf("unsupported disk.format %q", c.Disk.Format)
+	}
+}
+
+// extraDiskFormat is the format of an attached extra disk.
+
+func (c *Config) installerSpec() (installer.Spec, error) {
+	if !c.hasInstaller() {
+		return installer.Spec{}, nil
+	}
+	impl, err := installer.Lookup(c.Source.Installer.Type)
+	if err != nil {
+		return installer.Spec{}, err
+	}
+	answer, err := c.installerAnswerFile()
+	if err != nil {
+		return installer.Spec{}, err
+	}
+	input := installer.Input{
+		Hostname:   c.Name,
+		SSHUser:    c.sshUser(),
+		SSHKey:     c.SSHPublicKey,
+		AnswerFile: answer,
+	}
+	if c.Source.Installer.Type == installer.WindowsAutoUnattend {
+		windows := installer.WindowsOptions{Firmware: c.Firmware}
+		if inst := c.Source.Installer.Windows; inst != nil {
+			windows.Locale = inst.Locale
+			windows.InputLocale = inst.InputLocale
+			windows.Timezone = inst.Timezone
+			windows.ImageIndex = inst.ImageIndex
+			windows.AdminPassword = inst.AdminPassword
+		}
+		if len(answer) == 0 && strings.TrimSpace(windows.AdminPassword) == "" {
+			password, err := c.windowsAdminPassword()
+			if err != nil {
+				return installer.Spec{}, err
+			}
+			windows.AdminPassword = password
+		}
+		input.Windows = &windows
+	}
+	return impl.Spec(input)
+}
+
+func (c *Config) windowsAdminPassword() (string, error) {
+	if c.WindowsPassword != "" {
+		return c.WindowsPassword, nil
+	}
+	raw := make([]byte, 18)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generate Windows administrator password: %w", err)
+	}
+	password := "A!9" + hex.EncodeToString(raw)
+	c.WindowsPassword = password
+	if strings.TrimSpace(c.AssetDir) != "" {
+		if err := os.MkdirAll(c.AssetDir, 0o755); err != nil {
+			return "", fmt.Errorf("create asset dir: %w", err)
+		}
+		path := filepath.Join(c.AssetDir, "windows-admin-password")
+		if err := os.WriteFile(path, []byte(password+"\n"), 0o600); err != nil {
+			return "", fmt.Errorf("write Windows administrator password: %w", err)
+		}
+	}
+	return password, nil
+}
+
+func (c *Config) installerAnswerFile() ([]byte, error) {
+	inst := c.Source.Installer
+	if inst == nil {
+		return nil, nil
+	}
+	if strings.TrimSpace(inst.Inline) != "" {
+		return []byte(inst.Inline), nil
+	}
+	if strings.TrimSpace(inst.Config) == "" {
+		return nil, nil
+	}
+
+	path := inst.Config
+	if !filepath.IsAbs(path) {
+		if c.ConfigDir != "" {
+			path = filepath.Join(c.ConfigDir, path)
+		}
+		var err error
+		path, err = filepath.Abs(path)
+		if err != nil {
+			return nil, fmt.Errorf("resolve installer config %q: %w", inst.Config, err)
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("installer config %q is not accessible: %w", inst.Config, err)
+	}
+	return data, nil
+}
+
+func (c *Config) installerSeedPath() (string, error) {
+	if !c.hasInstaller() {
+		return "", nil
+	}
+	if strings.TrimSpace(c.AssetDir) == "" {
+		return "", fmt.Errorf("installer seed path requires the project asset directory")
+	}
+	return filepath.Join(c.AssetDir, c.Name+"-installer-seed.iso"), nil
+}
+
+// installerISOPath returns the installer media path. Installers that need
+// files injected use a remastered copy in the project asset directory.
+func (c *Config) installerISOPath() (string, error) {
+	source, err := filepath.Abs(c.Source.Path)
+	if err != nil {
+		return "", fmt.Errorf("resolve iso %q: %w", c.Source.Path, err)
+	}
+	spec, err := c.installerSpec()
+	if err != nil {
+		return "", err
+	}
+	if len(spec.InjectFiles) == 0 {
+		return source, nil
+	}
+	if strings.TrimSpace(c.AssetDir) == "" {
+		return "", fmt.Errorf("remastered installer ISO requires the project asset directory")
+	}
+	return filepath.Join(c.AssetDir, c.Name+"-installer.iso"), nil
+}
+
+func Hash(cfg *Config) (string, error) {
+	// Provisioning and SSH settings are not VM shape; changing a script must
+	// not require recreating the domain.
+	clone := *cfg
+	clone.SSH = SSHConfig{}
+	clone.Provisioners = nil
+	data, err := json.Marshal(&clone)
+	if err != nil {
+		return "", fmt.Errorf("hash config: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// applyProjectDefaults makes the managed disk location deterministic.
+func ApplyProjectDefaults(cfg *Config, layout state.ProjectLayout) {
+	cfg.AssetDir = layout.AssetDir
+	if cfg.Source.Type == sourceCloudImage && strings.TrimSpace(cfg.Disk.Path) == "" {
+		cfg.Disk.Path = filepath.Join(layout.AssetDir, "disk.qcow2")
+	}
+}
+
+// Exported accessors and aliases used by the CLI while it is split out of
+// package main.
+const (
+	SourceNone        = sourceNone
+	SourceCloudImage  = sourceCloudImage
+	SourceInstallTree = sourceInstallTree
+	SourceISO         = sourceISO
+	SourceDisk        = sourceDisk
+	SourcePXE         = sourcePXE
+
+	FirmwareBIOS = firmwareBIOS
+	FirmwareUEFI = firmwareUEFI
+
+	MountType9P       = mountType9P
+	MountTypeNone     = mountTypeNone
+	MountTypeVirtioFS = mountTypeVirtioFS
+
+	NetworkModeAuto    = networkModeAuto
+	NetworkModeDefault = networkModeDefault
+	NetworkModeUser    = networkModeUser
+	NetworkModeBridge  = networkModeBridge
+
+	GraphicsNone  = graphicsNone
+	GraphicsVNC   = graphicsVNC
+	GraphicsSPICE = graphicsSPICE
+
+	DiskFormatAuto  = diskFormatAuto
+	DiskFormatQCOW2 = diskFormatQCOW2
+	DiskFormatRaw   = diskFormatRaw
+
+	DiskBusAuto   = diskBusAuto
+	DiskBusVirtio = diskBusVirtio
+	DiskBusSATA   = diskBusSATA
+	DiskBusSCSI   = diskBusSCSI
+
+	TPMBackendEmulator = tpmBackendEmulator
+	TPMVersion12       = tpmVersion12
+	TPMVersion20       = tpmVersion20
+)
+
+func (c *Config) SSHUser() string                        { return c.sshUser() }
+func (c *Config) NeedsSSH() bool                         { return c.needsSSH() }
+func (c *Config) NeedsSeed() bool                        { return c.needsSeed() }
+func (c *Config) HasInstaller() bool                     { return c.hasInstaller() }
+func (c *Config) CanGenerateSSHKey() bool                { return c.canGenerateSSHKey() }
+func (c *Config) DiskBus() string                        { return c.diskBus() }
+func (c *Config) TPMBackend() string                     { return c.tpmBackend() }
+func (c *Config) TPMVersion() string                     { return c.tpmVersion() }
+func (c *Config) InstallerSpec() (installer.Spec, error) { return c.installerSpec() }
+func (c *Config) WindowsAdminPassword() (string, error)  { return c.windowsAdminPassword() }
+func (c *Config) InstallerAnswerFile() ([]byte, error)   { return c.installerAnswerFile() }
+func (c *Config) InstallerSeedPath() (string, error)     { return c.installerSeedPath() }
+func (c *Config) InstallerISOPath() (string, error)      { return c.installerISOPath() }
+func (c *Config) OverlayPath() (string, error)           { return c.overlayPath() }
+func (c *Config) SeedPath() (string, error)              { return c.seedPath() }
+func (c *Config) BaseFormat() (string, error)            { return c.baseFormat() }
+func (c *Config) NewDiskFormat() string                  { return c.newDiskFormat() }
+func (c *Config) SourceDiskFormat() (string, error)      { return c.sourceDiskFormat() }
+
+func DetectImageFormat(path string) (string, error) { return detectImageFormat(path) }
+
+// ValidSHA256 reports whether s is a SHA-256 hex digest.
+func ValidSHA256(s string) bool { return validSHA256(s) }

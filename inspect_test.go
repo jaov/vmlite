@@ -72,18 +72,18 @@ echo '[{"filename":"/tmp/disk.qcow2","format":"qcow2","virtual-size":10737418240
 	return binDir
 }
 
-func inspectFixture(t *testing.T) (configPath, stateDir, stateFile, assetDir string) {
+func inspectFixture(t *testing.T) (configPath, stateDir, stateFile, AssetDir string) {
 	t.Helper()
 	configPath, stateDir, stateFile = commandFixture(t)
-	assetDir = filepath.Join(stateDir, "cmd-test")
-	if err := os.MkdirAll(assetDir, 0o755); err != nil {
+	AssetDir = filepath.Join(stateDir, "cmd-test")
+	if err := os.MkdirAll(AssetDir, 0o755); err != nil {
 		t.Fatalf("create asset dir: %v", err)
 	}
-	return configPath, stateDir, stateFile, assetDir
+	return configPath, stateDir, stateFile, AssetDir
 }
 
 func TestInspectReport(t *testing.T) {
-	_, stateDir, stateFile, assetDir := inspectFixture(t)
+	_, stateDir, stateFile, AssetDir := inspectFixture(t)
 	fakeInspectTools(t)
 	st, err := loadState(stateFile)
 	if err != nil {
@@ -93,7 +93,7 @@ func TestInspectReport(t *testing.T) {
 		ConfigPath: stateFile,
 		StateDir:   stateDir,
 		StateFile:  stateFile,
-		AssetDir:   assetDir,
+		AssetDir:   AssetDir,
 	}
 	report := buildInspectReport(st, layout)
 	if report.Name != "cmd-test" || report.State != "running" || !report.Running {
@@ -124,7 +124,7 @@ func TestInspectReport(t *testing.T) {
 	if report.Stats["cpu.time"] != "1500000000" {
 		t.Fatalf("stats = %+v", report.Stats)
 	}
-	if report.Paths.State != stateFile || report.Paths.Assets != assetDir {
+	if report.Paths.State != stateFile || report.Paths.Assets != AssetDir {
 		t.Fatalf("paths = %+v", report.Paths)
 	}
 }

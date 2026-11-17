@@ -41,14 +41,14 @@ func TestPrepareInstallerSeed(t *testing.T) {
 	cfg := &Config{
 		Name:         "auto",
 		Source:       Source{Type: sourceISO, Path: "/tmp/ubuntu.iso", Installer: &Installer{Type: "ubuntu_autoinstall"}},
-		assetDir:     t.TempDir(),
-		sshPublicKey: "ssh-ed25519 AAAA test",
+		AssetDir:     t.TempDir(),
+		SSHPublicKey: "ssh-ed25519 AAAA test",
 	}
 	path, err := prepareInstallerSeed(cfg)
 	if err != nil {
 		t.Fatalf("prepareInstallerSeed: %v", err)
 	}
-	want := filepath.Join(cfg.assetDir, "auto-installer-seed.iso")
+	want := filepath.Join(cfg.AssetDir, "auto-installer-seed.iso")
 	if path != want {
 		t.Fatalf("seed path = %q, want %q", path, want)
 	}
@@ -81,7 +81,7 @@ func TestNewStateWindowsInstaller(t *testing.T) {
 			Path:      "/tmp/win.iso",
 			Installer: &Installer{Type: "windows_autounattend", Inline: "<unattend/>"},
 		},
-		assetDir: layout.AssetDir,
+		AssetDir: layout.AssetDir,
 	}
 	applyProjectDefaults(cfg, layout)
 	st, err := newState(cfg, layout, systemURI, "hash", "uuid")
@@ -122,10 +122,10 @@ func TestPrepareInstallerISO(t *testing.T) {
 	cfg := &Config{
 		Name:         "debian",
 		Source:       Source{Type: sourceISO, Path: source, Installer: &Installer{Type: "debian_preseed"}},
-		assetDir:     t.TempDir(),
-		sshPublicKey: "ssh-ed25519 AAAA test",
+		AssetDir:     t.TempDir(),
+		SSHPublicKey: "ssh-ed25519 AAAA test",
 	}
-	spec, err := cfg.installerSpec()
+	spec, err := cfg.InstallerSpec()
 	if err != nil {
 		t.Fatalf("installerSpec: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestPrepareInstallerISO(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareInstallerISO: %v", err)
 	}
-	if path != filepath.Join(cfg.assetDir, "debian-installer.iso") {
+	if path != filepath.Join(cfg.AssetDir, "debian-installer.iso") {
 		t.Fatalf("path = %q", path)
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -180,10 +180,10 @@ func TestPrepareInstallerKernel(t *testing.T) {
 		Name:         "arch",
 		Source:       Source{Type: sourceISO, Path: source, Installer: &Installer{Type: "arch_script"}},
 		Disk:         Disk{Size: 8, Path: filepath.Join(dir, "disk.qcow2"), Format: diskFormatQCOW2},
-		assetDir:     filepath.Join(dir, ".vmlite", "arch"),
-		sshPublicKey: "ssh-ed25519 AAAA test",
+		AssetDir:     filepath.Join(dir, ".vmlite", "arch"),
+		SSHPublicKey: "ssh-ed25519 AAAA test",
 	}
-	spec, err := cfg.installerSpec()
+	spec, err := cfg.InstallerSpec()
 	if err != nil {
 		t.Fatalf("installerSpec: %v", err)
 	}
@@ -237,8 +237,8 @@ func TestNewStateInstaller(t *testing.T) {
 	cfg := &Config{
 		Name:         "auto",
 		Source:       Source{Type: sourceISO, Path: "/tmp/ubuntu.iso", Installer: &Installer{Type: "ubuntu_autoinstall"}},
-		assetDir:     layout.AssetDir,
-		sshPublicKey: "ssh-ed25519 AAAA test",
+		AssetDir:     layout.AssetDir,
+		SSHPublicKey: "ssh-ed25519 AAAA test",
 	}
 	applyProjectDefaults(cfg, layout)
 

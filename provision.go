@@ -56,7 +56,7 @@ func derivePublicKey(privatePath string) (string, error) {
 }
 
 func ensureSSHKey(cfg *Config, layout projectLayout) error {
-	if !cfg.needsSSH() {
+	if !cfg.NeedsSSH() {
 		return nil
 	}
 
@@ -70,12 +70,12 @@ func ensureSSHKey(cfg *Config, layout projectLayout) error {
 			return err
 		}
 		cfg.SSH.Key = key
-		cfg.sshPublicKey = pub
-		cfg.sshKeyGenerated = false
+		cfg.SSHPublicKey = pub
+		cfg.SSHKeyGenerated = false
 		return nil
 	}
 
-	if !cfg.canGenerateSSHKey() {
+	if !cfg.CanGenerateSSHKey() {
 		return fmt.Errorf("ssh.key is required for source.type %q", cfg.Source.Type)
 	}
 
@@ -100,8 +100,8 @@ func ensureSSHKey(cfg *Config, layout projectLayout) error {
 		return err
 	}
 	cfg.SSH.Key = key
-	cfg.sshPublicKey = pub
-	cfg.sshKeyGenerated = true
+	cfg.SSHPublicKey = pub
+	cfg.SSHKeyGenerated = true
 	return nil
 }
 
@@ -235,7 +235,7 @@ func (s *shellStep) Apply(ctx context.Context, r plan.Runner) error {
 func guestSSHRunner(cfg *Config, st *State, ip string, dryRun bool) *plan.SSHRunner {
 	user := st.SSHUser
 	if user == "" {
-		user = cfg.sshUser()
+		user = cfg.SSHUser()
 	}
 	return &plan.SSHRunner{
 		Host:   ip,

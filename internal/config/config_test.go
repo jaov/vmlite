@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"os"
@@ -44,7 +44,7 @@ func TestLoadConfigValid(t *testing.T) {
 		]
 	}`)
 
-	cfg, err := LoadConfig(path)
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestLoadConfigValid(t *testing.T) {
 	if cfg.OSVariant != "debian12" || cfg.Firmware != "uefi" {
 		t.Errorf("os/firmware = %q/%q", cfg.OSVariant, cfg.Firmware)
 	}
-	if cfg.Source.Type != sourceCloudImage || cfg.Source.Path != "/tmp/base.qcow2" || cfg.Source.CloudInit != "/tmp/user-data" {
+	if cfg.Source.Type != SourceCloudImage || cfg.Source.Path != "/tmp/base.qcow2" || cfg.Source.CloudInit != "/tmp/user-data" {
 		t.Errorf("source = %+v", cfg.Source)
 	}
 	if cfg.Disk.Size != 20 || cfg.Disk.Path != "/tmp/overlay.qcow2" || cfg.Disk.Format != "qcow2" {
@@ -147,7 +147,7 @@ func TestLoadConfigValidation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeConfigFile(t, tc.content)
-			_, err := LoadConfig(path)
+			_, err := Load(path)
 			if err == nil {
 				t.Fatal("LoadConfig succeeded, want error")
 			}
@@ -173,17 +173,17 @@ func TestLoadConfigISOInstaller(t *testing.T) {
 		"provisioners": [{"type": "shell", "inline": "true"}]
 	}`)
 
-	cfg, err := LoadConfig(path)
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if !cfg.hasInstaller() || cfg.Source.Installer.Type != "ubuntu_autoinstall" {
+	if !cfg.HasInstaller() || cfg.Source.Installer.Type != "ubuntu_autoinstall" {
 		t.Fatalf("installer = %+v", cfg.Source.Installer)
 	}
-	if cfg.sshUser() != "deploy" {
-		t.Fatalf("ssh user = %q", cfg.sshUser())
+	if cfg.SSHUser() != "deploy" {
+		t.Fatalf("ssh user = %q", cfg.SSHUser())
 	}
-	if cfg.needsSeed() {
+	if cfg.NeedsSeed() {
 		t.Fatal("ISO installer must not use the cloud-image seed path")
 	}
 }
@@ -195,10 +195,10 @@ func TestInstallerAnswerFileRelative(t *testing.T) {
 	}
 	cfg := &Config{
 		Name:      "auto",
-		Source:    Source{Type: sourceISO, Path: "/tmp/ubuntu.iso", Installer: &Installer{Type: "ubuntu_autoinstall", Config: "autoinstall.yaml"}},
-		configDir: dir,
+		Source:    Source{Type: SourceISO, Path: "/tmp/ubuntu.iso", Installer: &Installer{Type: "ubuntu_autoinstall", Config: "autoinstall.yaml"}},
+		ConfigDir: dir,
 	}
-	got, err := cfg.installerAnswerFile()
+	got, err := cfg.InstallerAnswerFile()
 	if err != nil {
 		t.Fatalf("installerAnswerFile: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestLoadConfigManualISOAndDiskProvisioning(t *testing.T) {
 		`{"name": "disk", "memory": 1024, "cpus": 1, "source": {"type": "disk", "path": "/tmp/x.qcow2"}, "disk": {"size": 5}, "ssh": {"user": "deploy", "key": "/tmp/id_ed25519"}, "provisioners": [{"type": "shell", "inline": "true"}]}`,
 	}
 	for _, content := range cases {
-		cfg, err := LoadConfig(writeConfigFile(t, content))
+		cfg, err := Load(writeConfigFile(t, content))
 		if err != nil {
 			t.Fatalf("LoadConfig: %v", err)
 		}
@@ -235,15 +235,15 @@ func TestLoadConfigWindowsDevices(t *testing.T) {
 		"source": {"type": "none"},
 		"disk": {"size": 64, "format": "qcow2", "bus": "sata"}
 	}`)
-	cfg, err := LoadConfig(path)
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if !cfg.SecureBoot || cfg.TPM == nil || cfg.TPM.Version != tpmVersion20 {
+	if !cfg.SecureBoot || cfg.TPM == nil || cfg.TPM.Version != TPMVersion20 {
 		t.Fatalf("firmware/tpm = %+v %+v", cfg.SecureBoot, cfg.TPM)
 	}
-	if cfg.diskBus() != diskBusSATA {
-		t.Fatalf("diskBus = %q", cfg.diskBus())
+	if cfg.DiskBus() != DiskBusSATA {
+		t.Fatalf("diskBus = %q", cfg.DiskBus())
 	}
 }
 
@@ -264,14 +264,14 @@ func TestLoadConfigWindowsInstaller(t *testing.T) {
 		"disk": {"size": 64, "bus": "sata"},
 		"provisioners": [{"type": "powershell", "inline": "Write-Output hi"}]
 	}`)
-	cfg, err := LoadConfig(path)
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.sshUser() != "Administrator" {
-		t.Fatalf("sshUser = %q", cfg.sshUser())
+	if cfg.SSHUser() != "Administrator" {
+		t.Fatalf("sshUser = %q", cfg.SSHUser())
 	}
-	spec, err := cfg.installerSpec()
+	spec, err := cfg.InstallerSpec()
 	if err != nil {
 		t.Fatalf("installerSpec: %v", err)
 	}
@@ -297,13 +297,13 @@ func TestWindowsGeneratedAutounattend(t *testing.T) {
 		"disk": {"size": 64, "bus": "sata"},
 		"provisioners": [{"type": "powershell", "inline": "Write-Output hi"}]
 	}`)
-	cfg, err := LoadConfig(path)
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	cfg.assetDir = t.TempDir()
-	cfg.sshPublicKey = "ssh-ed25519 AAAA test"
-	spec, err := cfg.installerSpec()
+	cfg.AssetDir = t.TempDir()
+	cfg.SSHPublicKey = "ssh-ed25519 AAAA test"
+	spec, err := cfg.InstallerSpec()
 	if err != nil {
 		t.Fatalf("installerSpec: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestWindowsGeneratedAutounattend(t *testing.T) {
 			t.Errorf("autounattend missing %q", want)
 		}
 	}
-	passwordPath := filepath.Join(cfg.assetDir, "windows-admin-password")
+	passwordPath := filepath.Join(cfg.AssetDir, "windows-admin-password")
 	data, err := os.ReadFile(passwordPath)
 	if err != nil {
 		t.Fatalf("read generated password: %v", err)
@@ -332,7 +332,7 @@ func TestWindowsGeneratedAutounattend(t *testing.T) {
 
 func TestLoadConfigMediaURLs(t *testing.T) {
 	sha := strings.Repeat("a", 64)
-	for _, sourceType := range []string{sourceISO, sourceDisk} {
+	for _, sourceType := range []string{SourceISO, SourceDisk} {
 		path := writeConfigFile(t, `{
 			"name": "media",
 			"memory": 1024,
@@ -345,7 +345,7 @@ func TestLoadConfigMediaURLs(t *testing.T) {
 			},
 			"disk": {"size": 5}
 		}`)
-		cfg, err := LoadConfig(path)
+		cfg, err := Load(path)
 		if err != nil {
 			t.Fatalf("%s: LoadConfig: %v", sourceType, err)
 		}
@@ -356,12 +356,12 @@ func TestLoadConfigMediaURLs(t *testing.T) {
 }
 
 func TestSampleConfig(t *testing.T) {
-	cfg, err := LoadConfig("vm.json")
+	cfg, err := Load("../../vm.json")
 	if err != nil {
-		t.Fatalf("LoadConfig(vm.json): %v", err)
+		t.Fatalf("Load(vm.json): %v", err)
 	}
-	if cfg.Source.Type != sourceNone {
-		t.Fatalf("sample source.type = %q, want %q", cfg.Source.Type, sourceNone)
+	if cfg.Source.Type != SourceNone {
+		t.Fatalf("sample source.type = %q, want %q", cfg.Source.Type, SourceNone)
 	}
 	if cfg.Disk.Size <= 0 {
 		t.Fatalf("sample disk.size = %d", cfg.Disk.Size)
@@ -383,7 +383,7 @@ func TestLoadConfigURLImage(t *testing.T) {
 		"disk": {"size": 5}
 	}`)
 
-	cfg, err := LoadConfig(path)
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -406,7 +406,7 @@ func TestLoadConfigProvisioners(t *testing.T) {
 		]
 	}`)
 
-	cfg, err := LoadConfig(path)
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -427,7 +427,7 @@ func TestLoadConfigPowerShellProvisioner(t *testing.T) {
 		"disk": {"size": 20},
 		"provisioners": [{"type": "powershell", "inline": "Write-Output hi"}]
 	}`)
-	cfg, err := LoadConfig(path)
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -450,7 +450,7 @@ func TestLoadConfigProvisionerUploadsEnv(t *testing.T) {
 			"env": {"APP_ENV": "dev", "RETRIES": "3"}
 		}]
 	}`)
-	cfg, err := LoadConfig(path)
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -465,7 +465,7 @@ func TestLoadConfigProvisionerUploadsEnv(t *testing.T) {
 
 func TestLoadConfigInvalidJSON(t *testing.T) {
 	path := writeConfigFile(t, `{not json`)
-	_, err := LoadConfig(path)
+	_, err := Load(path)
 	if err == nil {
 		t.Fatal("LoadConfig succeeded, want error")
 	}
@@ -476,7 +476,7 @@ func TestLoadConfigInvalidJSON(t *testing.T) {
 
 func TestLoadConfigTrailingData(t *testing.T) {
 	path := writeConfigFile(t, `{"name":"vm","memory":1024,"cpus":1,"source":{"type":"none"},"disk":{"size":5}} {"extra":true}`)
-	_, err := LoadConfig(path)
+	_, err := Load(path)
 	if err == nil {
 		t.Fatal("LoadConfig succeeded, want error")
 	}
@@ -487,11 +487,37 @@ func TestLoadConfigTrailingData(t *testing.T) {
 
 func TestLoadConfigMissingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.json")
-	_, err := LoadConfig(path)
+	_, err := Load(path)
 	if err == nil {
 		t.Fatal("LoadConfig succeeded, want error")
 	}
 	if !strings.Contains(err.Error(), "open config") {
 		t.Fatalf("error = %q, want open context", err)
+	}
+}
+
+func TestHashIgnoresRuntimeFields(t *testing.T) {
+	cfg := Config{
+		Name:   "dev",
+		Memory: 1024,
+		CPUs:   1,
+		Source: Source{Type: SourceNone},
+		Disk:   Disk{Size: 5},
+	}
+	before, err := Hash(&cfg)
+	if err != nil {
+		t.Fatalf("Hash: %v", err)
+	}
+	cfg.AssetDir = "/tmp/assets"
+	cfg.ConfigDir = "/tmp/config"
+	cfg.SSHPublicKey = "ssh-ed25519 AAAA"
+	cfg.SSHKeyGenerated = true
+	cfg.WindowsPassword = "secret"
+	after, err := Hash(&cfg)
+	if err != nil {
+		t.Fatalf("Hash: %v", err)
+	}
+	if before != after {
+		t.Fatal("runtime-only fields changed the config hash")
 	}
 }

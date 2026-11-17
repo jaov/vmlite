@@ -31,7 +31,7 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 	if osVariant != "" {
 		args = append(args, "--os-variant", osVariant)
 	}
-	spec, err := cfg.installerSpec()
+	spec, err := cfg.InstallerSpec()
 	if err != nil {
 		return nil, err
 	}
@@ -43,9 +43,9 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 		args = append(args, bootArgs(cfg.Firmware, spec.BootOrder, cfg.SecureBoot)...)
 	}
 	if cfg.TPM != nil {
-		args = append(args, "--tpm", fmt.Sprintf("backend.type=%s,backend.version=%s", cfg.tpmBackend(), cfg.tpmVersion()))
+		args = append(args, "--tpm", fmt.Sprintf("backend.type=%s,backend.version=%s", cfg.TPMBackend(), cfg.TPMVersion()))
 	}
-	if cfg.hasInstaller() {
+	if cfg.HasInstaller() {
 		// Installer disks are sparse qcow2 and often live on smaller tmpfs
 		// pools; the fully-allocated capacity check is too pessimistic.
 		args = append(args, "--check", "disk_size=off")
@@ -129,20 +129,20 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 		return append(diskArgs, "--install", "no_install=yes"), nil
 
 	case sourceCloudImage:
-		overlay, err := cfg.overlayPath()
+		overlay, err := cfg.OverlayPath()
 		if err != nil {
 			return nil, err
 		}
 		diskSpec := fmt.Sprintf("path=%s,format=qcow2", overlay)
-		if bus := cfg.diskBus(); bus != "" {
+		if bus := cfg.DiskBus(); bus != "" {
 			diskSpec += ",bus=" + bus
 		}
 		args := []string{
 			"--import",
 			"--disk", diskSpec,
 		}
-		if cfg.needsSeed() {
-			seed, err := cfg.seedPath()
+		if cfg.NeedsSeed() {
+			seed, err := cfg.SeedPath()
 			if err != nil {
 				return nil, err
 			}
@@ -180,7 +180,7 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 				return nil, err
 			}
 		}
-		iso, err := cfg.installerISOPath()
+		iso, err := cfg.InstallerISOPath()
 		if err != nil {
 			return nil, err
 		}
@@ -201,7 +201,7 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 			args = append(args, "--cdrom", iso)
 		}
 		if spec.Seed != nil {
-			seedPath, err := cfg.installerSeedPath()
+			seedPath, err := cfg.InstallerSeedPath()
 			if err != nil {
 				return nil, err
 			}
@@ -224,7 +224,7 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 		return args, nil
 
 	case sourceDisk:
-		format, err := cfg.sourceDiskFormat()
+		format, err := cfg.SourceDiskFormat()
 		if err != nil {
 			return nil, err
 		}
@@ -233,7 +233,7 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 			return nil, fmt.Errorf("resolve disk %q: %w", cfg.Source.Path, err)
 		}
 		diskSpec := fmt.Sprintf("path=%s,format=%s", path, format)
-		if bus := cfg.diskBus(); bus != "" {
+		if bus := cfg.DiskBus(); bus != "" {
 			diskSpec += ",bus=" + bus
 		}
 		return []string{
@@ -255,13 +255,13 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 }
 
 func primaryDiskArgs(cfg *Config) ([]string, error) {
-	bus := cfg.diskBus()
+	bus := cfg.DiskBus()
 	if strings.TrimSpace(cfg.Disk.Path) != "" {
 		path, err := filepath.Abs(cfg.Disk.Path)
 		if err != nil {
 			return nil, fmt.Errorf("resolve disk path %q: %w", cfg.Disk.Path, err)
 		}
-		spec := fmt.Sprintf("path=%s,size=%d,format=%s", path, cfg.Disk.Size, cfg.newDiskFormat())
+		spec := fmt.Sprintf("path=%s,size=%d,format=%s", path, cfg.Disk.Size, cfg.NewDiskFormat())
 		if bus != "" {
 			spec += ",bus=" + bus
 		}
@@ -279,7 +279,7 @@ func primaryDiskArgsBus(cfg *Config, defaultBus string) ([]string, error) {
 	if err != nil {
 		return args, err
 	}
-	if cfg.diskBus() != "" || defaultBus == "" {
+	if cfg.DiskBus() != "" || defaultBus == "" {
 		return args, nil
 	}
 	if len(args) == 2 && args[0] == "--disk" {
@@ -377,7 +377,7 @@ func RunVirtInstall(cfg *Config, libvirtURI string) error {
 	if _, err := prepareSeed(cfg); err != nil {
 		return err
 	}
-	spec, err := cfg.installerSpec()
+	spec, err := cfg.InstallerSpec()
 	if err != nil {
 		return err
 	}

@@ -139,7 +139,7 @@ func runUp(args []string) error {
 			fmt.Printf("Would create VM %q via %s\n", cfg.Name, uri)
 			return nil
 		}
-		if cfg.needsSSH() {
+		if cfg.NeedsSSH() {
 			if err := ensureSSHKey(cfg, layout); err != nil {
 				return err
 			}
@@ -158,7 +158,7 @@ func runUp(args []string) error {
 			return fmt.Errorf("VM %q was created but state could not be written: %w", cfg.Name, err)
 		}
 		fmt.Printf("VM %q created successfully via %s\n", cfg.Name, uri)
-		if cfg.hasInstaller() {
+		if cfg.HasInstaller() {
 			fmt.Printf("Installer %q started; after it reboots, run: vmlite provision %s\n", cfg.Source.Installer.Type, configPath)
 			if cfg.Source.Installer.Type == guestinstall.WindowsAutoUnattend {
 				passwordPath := filepath.Join(layout.AssetDir, "windows-admin-password")

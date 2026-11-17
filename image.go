@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"vmlite/internal/config"
 	"vmlite/internal/seed"
 )
 
@@ -46,7 +46,7 @@ func resolveImage(cfg *Config, offline, dryRun bool) (string, error) {
 		return path, nil
 	}
 
-	if !validSHA256(cfg.Source.SHA256) {
+	if !config.ValidSHA256(cfg.Source.SHA256) {
 		return "", fmt.Errorf("source.sha256 is required for URL images")
 	}
 	sha := strings.ToLower(cfg.Source.SHA256)
@@ -161,131 +161,10 @@ func downloadImage(rawURL, path, wantSHA string) error {
 	return nil
 }
 
-// detectImageFormat asks qemu-img for a disk image's format.
-func detectImageFormat(path string) (string, error) {
-	cmd := exec.Command("qemu-img", "info", "--output=json", path)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("detect format of %q: %w", path, err)
-	}
-
-	var info struct {
-		Format string `json:"format"`
-	}
-	if err := json.Unmarshal(out, &info); err != nil {
-		return "", fmt.Errorf("parse qemu-img info for %q: %w", path, err)
-	}
-	if info.Format == "" {
-		return "", fmt.Errorf("qemu-img reported no format for %q", path)
-	}
-	return info.Format, nil
-}
-
-// CheckImageTools verifies the host tools required by the configured source.
-func CheckImageTools(cfg *Config) error {
-	needsQEMUImg := cfg.Source.Type == sourceCloudImage
-	if cfg.Source.Type == sourceDisk && (cfg.Disk.Format == "" || cfg.Disk.Format == diskFormatAuto) {
-		needsQEMUImg = true
-	}
-	for _, d := range cfg.ExtraDisks {
-		if d.Format == "" || d.Format == diskFormatAuto {
-			needsQEMUImg = true
-		}
-	}
-
-	if needsQEMUImg {
-		if _, err := exec.LookPath("qemu-img"); err != nil {
-			return fmt.Errorf("required binary \"qemu-img\" not found in PATH: %w", err)
-		}
-	}
-
-	if cfg.needsSeed() {
-		if _, err := seed.Builder(); err != nil {
-			return fmt.Errorf("cloud_init/provisioners: %w", err)
-		}
-	}
-	if cfg.hasInstaller() {
-		spec, err := cfg.installerSpec()
-		if err != nil {
-			return err
-		}
-		if spec.Seed != nil {
-			if _, err := seed.Builder(); err != nil {
-				return fmt.Errorf("installer: %w", err)
-			}
-		}
-		if len(spec.InjectFiles) > 0 {
-			if _, err := exec.LookPath("xorriso"); err != nil {
-				return fmt.Errorf("installer ISO remastering requires xorriso in PATH: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// overlayPath returns the qcow2 overlay path used for a cloud image.
-func (c *Config) overlayPath() (string, error) {
-	if c.Source.Type != sourceCloudImage {
-		return "", fmt.Errorf("overlay is only used with source.type %q", sourceCloudImage)
-	}
-	if strings.TrimSpace(c.Disk.Path) != "" {
-		return filepath.Abs(c.Disk.Path)
-	}
-
-	image, err := filepath.Abs(c.Source.Path)
-	if err != nil {
-		return "", fmt.Errorf("resolve image %q: %w", c.Source.Path, err)
-	}
-	return filepath.Join(filepath.Dir(image), c.Name+"-overlay.qcow2"), nil
-}
-
-// seedPath returns the NoCloud seed ISO path for a cloud image.
-func (c *Config) seedPath() (string, error) {
-	overlay, err := c.overlayPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(filepath.Dir(overlay), c.Name+"-seed.iso"), nil
-}
-
-// baseFormat is the backing format used when creating the overlay.
-func (c *Config) baseFormat() (string, error) {
-	switch c.Disk.Format {
-	case "", diskFormatAuto:
-		return detectImageFormat(c.Source.Path)
-	case diskFormatQCOW2, diskFormatRaw:
-		return c.Disk.Format, nil
-	default:
-		return "", fmt.Errorf("unsupported disk.format %q", c.Disk.Format)
-	}
-}
-
-// newDiskFormat is the format for a newly created primary disk.
-func (c *Config) newDiskFormat() string {
-	if c.Disk.Format == diskFormatRaw {
-		return diskFormatRaw
-	}
-	return diskFormatQCOW2
-}
-
-// sourceDiskFormat is the format of an imported source disk.
-func (c *Config) sourceDiskFormat() (string, error) {
-	switch c.Disk.Format {
-	case "", diskFormatAuto:
-		return detectImageFormat(c.Source.Path)
-	case diskFormatQCOW2, diskFormatRaw:
-		return c.Disk.Format, nil
-	default:
-		return "", fmt.Errorf("unsupported disk.format %q", c.Disk.Format)
-	}
-}
-
-// extraDiskFormat is the format of an attached extra disk.
 func extraDiskFormat(d ExtraDisk) (string, error) {
 	switch d.Format {
 	case "", diskFormatAuto:
-		return detectImageFormat(d.Path)
+		return config.DetectImageFormat(d.Path)
 	case diskFormatQCOW2, diskFormatRaw:
 		return d.Format, nil
 	default:
@@ -309,7 +188,7 @@ func prepareOverlay(cfg *Config) (string, error) {
 		return "", fmt.Errorf("image %q is not accessible: %w", cfg.Source.Path, err)
 	}
 
-	overlay, err := cfg.overlayPath()
+	overlay, err := cfg.OverlayPath()
 	if err != nil {
 		return "", err
 	}
@@ -322,7 +201,7 @@ func prepareOverlay(cfg *Config) (string, error) {
 		return "", fmt.Errorf("check disk image %q: %w", overlay, err)
 	}
 
-	baseFormat, err := cfg.baseFormat()
+	baseFormat, err := cfg.BaseFormat()
 	if err != nil {
 		return "", err
 	}
@@ -347,11 +226,11 @@ func prepareOverlay(cfg *Config) (string, error) {
 // prepareSeed creates a persistent NoCloud seed ISO. Using our own seed avoids
 // virt-install's transient cloud-init ISO and its forced on_reboot=destroy.
 func prepareSeed(cfg *Config) (string, error) {
-	if !cfg.needsSeed() {
+	if !cfg.NeedsSeed() {
 		return "", nil
 	}
 
-	seedPath, err := cfg.seedPath()
+	seedPath, err := cfg.SeedPath()
 	if err != nil {
 		return "", err
 	}
@@ -380,8 +259,8 @@ func prepareSeed(cfg *Config) (string, error) {
 		{Name: "meta-data", Data: []byte(metaData)},
 		{Name: "user-data", Data: content},
 	}
-	if cfg.needsSSH() {
-		if strings.TrimSpace(cfg.sshPublicKey) == "" {
+	if cfg.NeedsSSH() {
+		if strings.TrimSpace(cfg.SSHPublicKey) == "" {
 			return "", fmt.Errorf("SSH public key is not available; generate keys before creating the seed")
 		}
 		vendor := fmt.Sprintf(`#cloud-config
@@ -393,7 +272,7 @@ users:
     ssh_authorized_keys:
       - %s
 ssh_pwauth: false
-`, cfg.sshUser(), strings.TrimSpace(cfg.sshPublicKey))
+`, cfg.SSHUser(), strings.TrimSpace(cfg.SSHPublicKey))
 		files = append(files, seed.File{Name: "vendor-data", Data: []byte(vendor)})
 	}
 
@@ -401,4 +280,47 @@ ssh_pwauth: false
 		return "", err
 	}
 	return seedPath, nil
+}
+
+// CheckImageTools verifies the host tools required by the configured source.
+func CheckImageTools(cfg *Config) error {
+	needsQEMUImg := cfg.Source.Type == sourceCloudImage
+	if cfg.Source.Type == sourceDisk && (cfg.Disk.Format == "" || cfg.Disk.Format == diskFormatAuto) {
+		needsQEMUImg = true
+	}
+	for _, d := range cfg.ExtraDisks {
+		if d.Format == "" || d.Format == diskFormatAuto {
+			needsQEMUImg = true
+		}
+	}
+
+	if needsQEMUImg {
+		if _, err := exec.LookPath("qemu-img"); err != nil {
+			return fmt.Errorf("required binary \"qemu-img\" not found in PATH: %w", err)
+		}
+	}
+
+	if cfg.NeedsSeed() {
+		if _, err := seed.Builder(); err != nil {
+			return fmt.Errorf("cloud_init/provisioners: %w", err)
+		}
+	}
+	if cfg.HasInstaller() {
+		spec, err := cfg.InstallerSpec()
+		if err != nil {
+			return err
+		}
+		if spec.Seed != nil {
+			if _, err := seed.Builder(); err != nil {
+				return fmt.Errorf("installer: %w", err)
+			}
+		}
+		if len(spec.InjectFiles) > 0 {
+			if _, err := exec.LookPath("xorriso"); err != nil {
+				return fmt.Errorf("installer ISO remastering requires xorriso in PATH: %w", err)
+			}
+		}
+	}
+
+	return nil
 }

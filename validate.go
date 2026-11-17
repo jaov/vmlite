@@ -23,7 +23,7 @@ func runValidate(args []string) error {
 	if err := validateLocalPaths(cfg); err != nil {
 		return err
 	}
-	if _, err := cfg.installerSpec(); err != nil {
+	if _, err := cfg.InstallerSpec(); err != nil {
 		return err
 	}
 
@@ -62,7 +62,7 @@ func validateLocalPaths(cfg *Config) error {
 		}
 	}
 	if cfg.Source.Installer != nil {
-		if _, err := cfg.installerAnswerFile(); err != nil {
+		if _, err := cfg.InstallerAnswerFile(); err != nil {
 			return err
 		}
 	}
