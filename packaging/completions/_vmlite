@@ -1,0 +1,73 @@
+#compdef vmlite
+
+_vmlite() {
+    local -a commands
+    commands=(
+        'up:Create or start the VM (default)'
+        'provision:Run pending provisioners or finish an installer'
+        'status:Show VM, installer, IP, and provisioner state'
+        'start:Start a stopped VM'
+        'stop:Gracefully stop a running VM'
+        'restart:Reboot a running VM or start a stopped VM'
+        'ssh:Open a shell or run a command in the guest'
+        'scp:Copy a host file into the guest'
+        'console:Attach to the serial console or print graphical details'
+        'list:List managed VMs in the state directory'
+        'destroy:Remove the VM and managed files'
+        'validate:Validate a config without changing anything'
+        'schema:Print the JSON Schema for vmlite configs'
+        'install:Install host dependencies and vmlite'
+        'doctor:Check host readiness'
+        'version:Print the vmlite version'
+        'help:Show help for a command'
+    )
+
+    _arguments -C \
+        '1:command:->command' \
+        '*::arg:->args'
+
+    case $state in
+        command)
+            _describe 'command' commands
+            ;;
+        args)
+            case $words[1] in
+                up)
+                    _arguments \
+                        '--connect[libvirt connection URI]:uri:' \
+                        '--state-dir[state directory]:dir:_files -/' \
+                        '--recreate[destroy and recreate the VM]' \
+                        '--dry-run[print actions without changing anything]' \
+                        '--offline[do not download missing images]' \
+                        '*:config:_files'
+                    ;;
+                provision)
+                    _arguments \
+                        '--state-dir[state directory]:dir:_files -/' \
+                        '--force[rerun once provisioners]' \
+                        '--dry-run[print actions]' \
+                        '--timeout[guest readiness timeout]:duration:' \
+                        '*:config:_files'
+                    ;;
+                install)
+                    _arguments \
+                        '--prefix[install destination directory]:dir:_files -/' \
+                        '--binary[install a local vmlite binary]:file:_files' \
+                        '--binary-url[download a vmlite binary]:url:' \
+                        '--binary-sha256[SHA-256 for --binary-url]:sha:' \
+                        '--no-deps[skip host package installation]' \
+                        '--dry-run[print actions]'
+                    ;;
+                doctor)
+                    _arguments \
+                        '--prefix[vmlite install destination]:dir:_files -/'
+                    ;;
+                *)
+                    _files
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_vmlite "$@"

@@ -64,7 +64,7 @@ func runInstall(args []string) error {
 func doctorFlagSet() (*flag.FlagSet, *string) {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	prefix := fs.String("prefix", "/usr/local/bin", "vmlite install destination")
+	prefix := fs.String("prefix", "", "installed vmlite directory (default: search PATH)")
 	return fs, prefix
 }
 

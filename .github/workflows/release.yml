@@ -25,14 +25,39 @@ jobs:
           go build -trimpath \
             -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
             -o dist/vmlite-linux-amd64 .
-          (cd dist && sha256sum vmlite-linux-amd64 > vmlite-linux-amd64.sha256)
+
+      - name: install nfpm
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.41.3
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: package
+        env:
+          VMLITE_VERSION: ${{ github.ref_name }}
+        run: |
+          version="${VMLITE_VERSION#v}"
+          VMLITE_VERSION="$version" nfpm package \
+            --config packaging/nfpm.yaml \
+            --packager deb \
+            --target dist/
+          VMLITE_VERSION="$version" nfpm package \
+            --config packaging/nfpm.yaml \
+            --packager rpm \
+            --target dist/
+          dpkg-deb --info dist/vmlite_*.deb
+          dpkg-deb --contents dist/vmlite_*.deb
+
+      - name: checksums
+        run: |
+          cd dist
+          sha256sum vmlite-linux-amd64 vmlite_*.deb vmlite-*.rpm > SHA256SUMS
+          sha256sum -c SHA256SUMS
 
       - name: publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            dist/vmlite-linux-amd64 \
-            dist/vmlite-linux-amd64.sha256 \
+            dist/* \
             --title "$GITHUB_REF_NAME" \
             --notes "vmlite $GITHUB_REF_NAME"

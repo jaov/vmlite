@@ -1,0 +1,71 @@
+name: vmlite
+arch: amd64
+platform: linux
+version: ${VMLITE_VERSION}
+release: "1"
+section: admin
+priority: optional
+maintainer: jaov <me@j8a.dev>
+description: |
+  Reproducible local KVM/libvirt virtual machines from JSON configuration.
+  vmlite provides a Vagrant-like lifecycle, cloud images, automated Linux and
+  Windows installers, and SSH provisioning.
+vendor: vmlite
+homepage: https://github.com/jaov/vmlite
+license: MIT
+
+contents:
+  - src: dist/vmlite-linux-amd64
+    dst: /usr/bin/vmlite
+    file_info:
+      mode: 0755
+  - src: packaging/vmlite.1
+    dst: /usr/share/man/man1/vmlite.1
+    file_info:
+      mode: 0644
+  - src: packaging/completions/vmlite.bash
+    dst: /usr/share/bash-completion/completions/vmlite
+    file_info:
+      mode: 0644
+  - src: packaging/completions/_vmlite
+    dst: /usr/share/zsh/site-functions/_vmlite
+    file_info:
+      mode: 0644
+  - src: packaging/completions/vmlite.fish
+    dst: /usr/share/fish/vendor_completions.d/vmlite.fish
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/doc/vmlite/LICENSE
+    file_info:
+      mode: 0644
+  - src: README.md
+    dst: /usr/share/doc/vmlite/README.md
+    file_info:
+      mode: 0644
+
+overrides:
+  deb:
+    depends:
+      - qemu-system-x86
+      - qemu-utils
+      - libvirt-daemon-system
+      - libvirt-clients
+      - virtinst
+      - xorriso
+      - openssh-client
+      - dnsmasq-base
+  rpm:
+    depends:
+      - qemu-kvm
+      - qemu-img
+      - libvirt
+      - libvirt-daemon-kvm
+      - libvirt-daemon-config-network
+      - libvirt-client
+      - virt-install
+      - xorriso
+      - openssh-clients
+      - dnsmasq
+    rpm:
+      group: Applications/System

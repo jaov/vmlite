@@ -1,0 +1,147 @@
+.TH VMLITE 1 "2026-11-17" "vmlite" "User Commands"
+.SH NAME
+vmlite \- reproducible local KVM/libvirt virtual machines
+.SH SYNOPSIS
+.B vmlite
+[\fICOMMAND\fR] [\fIOPTIONS\fR] [\fICONFIG\fR]
+.SH DESCRIPTION
+.B vmlite
+creates and manages local KVM/libvirt guests from a JSON configuration file.
+State is project-local under
+.I .vmlite/
+next to the configuration file. Running
+.B vmlite
+without a command is the same as
+.BR "vmlite up" .
+.PP
+The default configuration file is
+.IR vm.json .
+.SH COMMANDS
+.TP
+.B up
+Create or start the VM. This is the default command.
+.TP
+.B provision
+Run pending provisioners, or finish an automated installer.
+.TP
+.B status
+Show VM, installer, IP, and provisioner state.
+.TP
+.B start
+Start a stopped VM.
+.TP
+.B stop
+Gracefully stop a running VM.
+.TP
+.B restart
+Reboot a running VM or start a stopped VM.
+.TP
+.B ssh
+Open a shell or run a command in the guest.
+.TP
+.B scp
+Copy a host file into the guest.
+.TP
+.B console
+Attach to the serial console or print graphical details.
+.TP
+.B list
+List managed VMs in the state directory.
+.TP
+.B destroy
+Remove the VM and managed files.
+.TP
+.B validate
+Validate a configuration without changing anything.
+.TP
+.B schema
+Print the JSON Schema for vmlite configurations.
+.TP
+.B install
+Install host dependencies and the vmlite binary.
+.TP
+.B doctor
+Check host readiness without changing anything.
+.TP
+.B version
+Print the vmlite version.
+.TP
+.B help
+Show top-level or command-specific help.
+.SH OPTIONS
+Flags belong after the command and accept either
+.B \-name
+or
+.BR \-\-name .
+Use
+.B vmlite help \fICOMMAND\fR
+or
+.B vmlite \fICOMMAND\fR \-\-help
+for command-specific options.
+.TP
+.B \-\-connect \fIURI\fR
+libvirt connection URI. Defaults to
+.B qemu:///system
+when available.
+.TP
+.B \-\-state\-dir \fIDIR\fR
+State directory. Defaults to
+.I .vmlite
+next to the configuration file.
+.TP
+.B \-\-dry\-run
+Print actions without changing anything.
+.SH FILES
+.TP
+.I vm.json
+Default configuration file.
+.TP
+.I .vmlite/
+Project-local state, disks, seeds, keys, and installer media.
+.TP
+.I ~/.cache/vmlite/
+Default cache for downloaded cloud images and installer media.
+.SH EXAMPLES
+Create or start a VM:
+.PP
+.RS
+.nf
+vmlite up
+vmlite up --connect qemu:///system vm.json
+.fi
+.RE
+.PP
+Finish an installer and run provisioners:
+.PP
+.RS
+.nf
+vmlite provision vm.json
+.fi
+.RE
+.PP
+Validate a configuration:
+.PP
+.RS
+.nf
+vmlite validate vm.json
+.fi
+.RE
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Runtime or configuration error.
+.TP
+.B 2
+Usage error.
+.TP
+.B 3
+VM is not running, missing, or not created.
+.SH SEE ALSO
+.BR virsh (1),
+.BR virt\-install (1),
+.BR qemu\-img (1)
+.SH AUTHORS
+jaov <me@j8a.dev>

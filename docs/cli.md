@@ -309,7 +309,10 @@ vmlite install [--prefix DIR] [--binary PATH] [--binary-url URL] [--binary-sha25
 ```
 
 `install.sh` is a bootstrap that builds a temporary `vmlite` and delegates to
-this command.
+this command. `--prefix` defaults to `/usr/local/bin`.
+
+If vmlite was installed from a `.deb` or `.rpm`, the package manager owns
+`/usr/bin/vmlite`; do not run `vmlite install` on top of it.
 
 ### `vmlite doctor`
 
@@ -320,7 +323,8 @@ vmlite doctor [--prefix DIR]
 ```
 
 Checks KVM, libvirt, `virt-install`, ISO tools, SSH tools, the default network,
-and the installed `vmlite` binary.
+and the installed `vmlite` binary. Without `--prefix`, it searches `PATH`, so
+package installs in `/usr/bin` are detected.
 
 ### `vmlite version`
 

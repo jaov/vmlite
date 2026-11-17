@@ -9,7 +9,7 @@ vmlite is Vagrant-like without the Ruby dependency:
 - reproducible cloud images and installer media
 - `up`, `provision`, `status`, `destroy`, `validate`
 - shell and PowerShell provisioners
-- automated Ubuntu, Fedora, Debian, and Windows installation paths
+- automated Ubuntu, Fedora, Debian, Arch, and Windows installation paths
 
 ## Install on a Linux host
 
@@ -39,6 +39,22 @@ vmlite install --no-deps
 vmlite install --prefix /usr/bin
 vmlite doctor                  # read-only readiness check
 ```
+
+### Release packages
+
+GitHub Releases also include `.deb` and `.rpm` packages:
+
+```bash
+sudo apt install ./vmlite_<version>-1_amd64.deb
+sudo dnf install ./vmlite-<version>-1.x86_64.rpm
+```
+
+Packages install `vmlite` to `/usr/bin` with shell completions and a man page.
+They are release assets, not a hosted APT/DNF repository. If a manual install
+exists in `/usr/local/bin`, that copy takes precedence in `PATH`.
+
+Package users should not run `vmlite install`; the package manager owns the
+files. Use `vmlite doctor` to check host readiness.
 
 ## Quick start
 

@@ -8,11 +8,24 @@ import (
 	"strings"
 )
 
+// installedVmlitePath locates the managed CLI. With a prefix it checks that
+// directory; otherwise it follows PATH so package installs in /usr/bin work.
+func installedVmlitePath(prefix string) (string, error) {
+	if prefix != "" {
+		path := filepath.Join(prefix, "vmlite")
+		if _, err := os.Stat(path); err != nil {
+			return "", fmt.Errorf("not installed at %s", path)
+		}
+		return path, nil
+	}
+	if path, err := exec.LookPath("vmlite"); err == nil {
+		return path, nil
+	}
+	return "", fmt.Errorf("not found in PATH; use --prefix DIR")
+}
+
 // Doctor reports host readiness without changing anything.
 func Doctor(p Platform, prefix string) error {
-	if prefix == "" {
-		prefix = "/usr/local/bin"
-	}
 	fmt.Printf("Platform: %s (%s, %s)\n", p.ID, p.Family, p.Arch)
 
 	var problems []string
@@ -45,9 +58,9 @@ func Doctor(p Platform, prefix string) error {
 		fmt.Println("libvirt: unavailable")
 	}
 
-	vmlite := filepath.Join(prefix, "vmlite")
-	if _, err := os.Stat(vmlite); err != nil {
-		fmt.Printf("vmlite: not installed at %s\n", vmlite)
+	vmlite, err := installedVmlitePath(prefix)
+	if err != nil {
+		fmt.Printf("vmlite: %v\n", err)
 	} else {
 		fmt.Printf("vmlite: %s\n", vmlite)
 	}
