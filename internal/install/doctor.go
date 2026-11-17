@@ -51,8 +51,10 @@ func Doctor(p Platform, prefix string) error {
 	switch {
 	case systemOK:
 		fmt.Println("libvirt: qemu:///system reachable")
+		printPools("qemu:///system")
 	case sessionOK:
 		fmt.Println("libvirt: qemu:///session reachable (system unavailable)")
+		printPools("qemu:///session")
 	default:
 		problems = append(problems, "neither qemu:///system nor qemu:///session is reachable")
 		fmt.Println("libvirt: unavailable")

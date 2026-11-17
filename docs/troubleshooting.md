@@ -94,6 +94,9 @@ vmlite console --log vm.json
 # log: .vmlite/<name>/console.log
 ```
 
+`vmlite doctor` also lists libvirt storage pools and marks pools whose target
+path is inside a vmlite state tree.
+
 ## Missing host tools
 
 Install or check tools:
