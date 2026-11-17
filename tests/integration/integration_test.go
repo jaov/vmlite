@@ -1,6 +1,6 @@
 //go:build integration
 
-package main
+package integration
 
 import (
 	"context"
@@ -41,7 +41,7 @@ func TestMain(m *testing.M) {
 
 func runIntegrationSuite(m *testing.M, dir string) int {
 	bin := filepath.Join(dir, "vmlite")
-	build := exec.Command("go", "build", "-o", bin, ".")
+	build := exec.Command("go", "build", "-o", bin, "../..")
 	if out, err := build.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "integration setup: build vmlite: %v\n%s", err, out)
 		return 1

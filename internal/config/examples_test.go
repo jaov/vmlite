@@ -1,4 +1,4 @@
-package cli
+package config
 
 import (
 	"path/filepath"
@@ -14,7 +14,7 @@ func TestExamplesLoad(t *testing.T) {
 		t.Fatal("no example configs found")
 	}
 	for _, path := range paths {
-		if _, err := LoadConfig(path); err != nil {
+		if _, err := Load(path); err != nil {
 			t.Errorf("%s: %v", path, err)
 		}
 	}

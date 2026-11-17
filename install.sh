@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 
+# Build relative to the repository, not the caller's working directory.
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$script_dir"
+
 if command -v go >/dev/null 2>&1; then
 	tmp="$(mktemp)"
 	trap 'rm -f "$tmp"' EXIT HUP INT TERM

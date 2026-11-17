@@ -8,6 +8,9 @@ Unit tests need no libvirt and are safe to run anywhere:
 go test ./...
 ```
 
+Unit tests live next to the packages they cover. Script/example checks live in
+`tests/scripts` and `internal/config`.
+
 They cover config parsing/validation, argument construction, overlay/seed
 generation, image tool checks, URI-independent preflight logic (using fake
 `virsh`/`virt-install`/ISO tools), and CLI usage errors. Tests that require
@@ -16,10 +19,12 @@ generation, image tool checks, URI-independent preflight logic (using fake
 ## Integration tests
 
 Integration tests create real libvirt domains, inspect their XML, and remove
-them again. They are behind a build tag:
+them again. They live in `tests/integration` and are behind a build tag:
 
 ```bash
 go test -tags integration -v ./...
+# or only the integration suite
+go test -tags integration -v ./tests/integration/...
 ```
 
 Defaults:
@@ -427,8 +432,8 @@ Requirements:
 
 The Go installer's distro branches are covered by unit tests for
 Ubuntu/Debian, Fedora/RHEL, Arch, openSUSE, and the FreeBSD host rejection.
-`install.sh` is tested separately as a bootstrap dry run. Read-only host checks
-are available through `vmlite doctor`.
+`install.sh` is tested separately as a bootstrap dry run in `tests/scripts`.
+Read-only host checks are available through `vmlite doctor`.
 
 ## Package smoke tests
 

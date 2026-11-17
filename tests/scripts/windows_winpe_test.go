@@ -1,4 +1,4 @@
-package main
+package scripts
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 )
 
 func TestWinPEStartnet(t *testing.T) {
-	data, err := os.ReadFile("scripts/winpe/startnet.cmd")
+	data, err := os.ReadFile("../../scripts/winpe/startnet.cmd")
 	if err != nil {
 		t.Fatalf("read startnet.cmd: %v", err)
 	}

@@ -1,6 +1,6 @@
 //go:build integration
 
-package main
+package integration
 
 import (
 	"fmt"
@@ -37,7 +37,7 @@ func selfhostWorkDir(t *testing.T) string {
 
 func buildStaticVmlite(t *testing.T, path string) {
 	t.Helper()
-	cmd := exec.Command("go", "build", "-o", path, ".")
+	cmd := exec.Command("go", "build", "-o", path, "../..")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build static vmlite: %v\n%s", err, out)

@@ -1,4 +1,4 @@
-package main
+package scripts
 
 import (
 	"os"
@@ -15,7 +15,7 @@ func TestInstallScriptBootstrap(t *testing.T) {
 		t.Fatalf("write os-release: %v", err)
 	}
 
-	cmd := exec.Command("./install.sh", "--dry-run", "--binary", "/bin/true")
+	cmd := exec.Command("../../install.sh", "--dry-run", "--binary", "/bin/true")
 	cmd.Env = append(os.Environ(), "VMLITE_OS_RELEASE="+releasePath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
