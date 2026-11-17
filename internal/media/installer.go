@@ -1,4 +1,4 @@
-package main
+package media
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 )
 
 // prepareInstallerISO remasters the source ISO with installer.Spec.InjectFiles.
-func prepareInstallerISO(cfg *Config, spec guestinstall.Spec) (string, error) {
+func PrepareInstallerISO(cfg *Config, spec guestinstall.Spec) (string, error) {
 	if len(spec.InjectFiles) == 0 {
 		return "", nil
 	}
@@ -90,7 +90,7 @@ func prepareInstallerISO(cfg *Config, spec guestinstall.Spec) (string, error) {
 
 // prepareInstallerKernel extracts the kernel and initrd used by installers
 // that boot a live ISO directly instead of using --location.
-func prepareInstallerKernel(cfg *Config, spec guestinstall.Spec) (string, string, error) {
+func PrepareInstallerKernel(cfg *Config, spec guestinstall.Spec) (string, string, error) {
 	if !spec.KernelBoot {
 		return "", "", nil
 	}
@@ -107,7 +107,7 @@ func prepareInstallerKernel(cfg *Config, spec guestinstall.Spec) (string, string
 		return "", "", fmt.Errorf("installer kernel extraction requires the project asset directory")
 	}
 
-	iso, err := prepareInstallerISO(cfg, spec)
+	iso, err := PrepareInstallerISO(cfg, spec)
 	if err != nil {
 		return "", "", err
 	}
@@ -189,7 +189,7 @@ func prepareInstallerKernel(cfg *Config, spec guestinstall.Spec) (string, string
 
 // prepareInstallerSeed creates the answer media consumed by an unattended ISO
 // installer. Cloud images use prepareSeed instead.
-func prepareInstallerSeed(cfg *Config) (string, error) {
+func PrepareInstallerSeed(cfg *Config) (string, error) {
 	spec, err := cfg.InstallerSpec()
 	if err != nil {
 		return "", err

@@ -1,4 +1,4 @@
-package main
+package media
 
 import (
 	"crypto/sha256"
@@ -18,12 +18,26 @@ import (
 	"vmlite/internal/seed"
 )
 
-var errImageWouldDownload = errors.New("image would be downloaded")
+var ErrImageWouldDownload = errors.New("image would be downloaded")
 
-// resolveImage returns a local, verified media path. Cloud images, ISO
+type Config = config.Config
+type ExtraDisk = config.ExtraDisk
+
+const (
+	sourceNone        = config.SourceNone
+	sourceCloudImage  = config.SourceCloudImage
+	sourceInstallTree = config.SourceInstallTree
+	sourceISO         = config.SourceISO
+	sourceDisk        = config.SourceDisk
+	diskFormatAuto    = config.DiskFormatAuto
+	diskFormatQCOW2   = config.DiskFormatQCOW2
+	diskFormatRaw     = config.DiskFormatRaw
+)
+
+// ResolveImage returns a local, verified media path. Cloud images, ISO
 // installers, and imported disks may use URL sources; URL media is downloaded
 // into the cache and checked against source.sha256.
-func resolveImage(cfg *Config, offline, dryRun bool) (string, error) {
+func ResolveImage(cfg *Config, offline, dryRun bool) (string, error) {
 	switch cfg.Source.Type {
 	case sourceCloudImage, sourceISO, sourceDisk:
 	default:
@@ -92,7 +106,7 @@ func resolveImage(cfg *Config, offline, dryRun bool) (string, error) {
 		return "", fmt.Errorf("image is not cached at %q and --offline is set", cachePath)
 	}
 	if dryRun {
-		return "", errImageWouldDownload
+		return "", ErrImageWouldDownload
 	}
 	if err := downloadImage(cfg.Source.URL, cachePath, sha); err != nil {
 		return "", err
@@ -161,7 +175,7 @@ func downloadImage(rawURL, path, wantSHA string) error {
 	return nil
 }
 
-func extraDiskFormat(d ExtraDisk) (string, error) {
+func ExtraDiskFormat(d ExtraDisk) (string, error) {
 	switch d.Format {
 	case "", diskFormatAuto:
 		return config.DetectImageFormat(d.Path)
@@ -175,7 +189,7 @@ func extraDiskFormat(d ExtraDisk) (string, error) {
 // prepareOverlay creates the copy-on-write overlay for a cloud image. It never
 // overwrites an implicit disk path; an explicit disk.path is user-managed and
 // reused.
-func prepareOverlay(cfg *Config) (string, error) {
+func PrepareOverlay(cfg *Config) (string, error) {
 	if cfg.Source.Type != sourceCloudImage {
 		return "", nil
 	}
@@ -225,7 +239,7 @@ func prepareOverlay(cfg *Config) (string, error) {
 
 // prepareSeed creates a persistent NoCloud seed ISO. Using our own seed avoids
 // virt-install's transient cloud-init ISO and its forced on_reboot=destroy.
-func prepareSeed(cfg *Config) (string, error) {
+func PrepareSeed(cfg *Config) (string, error) {
 	if !cfg.NeedsSeed() {
 		return "", nil
 	}
