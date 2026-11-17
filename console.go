@@ -5,19 +5,22 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
-func consoleFlagSet() (*flag.FlagSet, *string, *string, *bool) {
+func consoleFlagSet() (*flag.FlagSet, *string, *string, *bool, *bool, *string) {
 	fs := newStateFlagSet("console")
 	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
 	consoleType := fs.String("type", "auto", "console type: auto, serial, or vnc")
 	dryRun := fs.Bool("dry-run", false, "print actions without attaching")
-	return fs, stateDir, consoleType, dryRun
+	logEnabled := fs.Bool("log", false, "record serial console output to .vmlite/<name>/console.log")
+	logFile := fs.String("log-file", "", "serial console log path (implies --log)")
+	return fs, stateDir, consoleType, dryRun, logEnabled, logFile
 }
 
 func runConsole(args []string) error {
-	fs, stateDir, consoleType, dryRun := consoleFlagSet()
+	fs, stateDir, consoleType, dryRun, logEnabled, logFile := consoleFlagSet()
 	configPath, err := parseConfigArgs(fs, args)
 	if err != nil {
 		return err
@@ -56,6 +59,9 @@ func runConsole(args []string) error {
 		display = strings.TrimSpace(out)
 	}
 	if *consoleType == "vnc" || (*consoleType == "auto" && display != "") {
+		if *logEnabled || *logFile != "" {
+			return fmt.Errorf("console logging requires a serial console")
+		}
 		if display == "" {
 			return fmt.Errorf("VM %q has no graphical display", st.Name)
 		}
@@ -75,10 +81,41 @@ func runConsole(args []string) error {
 	}
 
 	args = []string{"-c", st.LibvirtURI, "console", st.Name, "--force"}
+	logPath := ""
+	if *logEnabled || *logFile != "" {
+		logPath = consoleLogPath(st, layout, *logFile)
+		if logPath == "" {
+			return fmt.Errorf("could not determine serial console log path")
+		}
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+			return fmt.Errorf("create console log directory: %w", err)
+		}
+	}
 	if *dryRun {
-		fmt.Printf("+ virsh %s\n", strings.Join(args, " "))
+		if logPath != "" {
+			fmt.Printf("+ script -q -c %q %s\n", consoleShellJoin(append([]string{"virsh"}, args...)), logPath)
+		} else {
+			fmt.Printf("+ virsh %s\n", strings.Join(args, " "))
+		}
 		return nil
 	}
+
+	if logPath != "" {
+		scriptPath, err := exec.LookPath("script")
+		if err != nil {
+			return fmt.Errorf("console logging requires the script utility: %w", err)
+		}
+		fmt.Printf("Recording serial console to %s\n", logPath)
+		cmd := exec.Command(scriptPath, "-q", "-c", consoleShellJoin(append([]string{"virsh"}, args...)), logPath)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("serial console %q: %w", st.Name, err)
+		}
+		return nil
+	}
+
 	cmd := exec.Command("virsh", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -87,4 +124,36 @@ func runConsole(args []string) error {
 		return fmt.Errorf("virsh console %q: %w", st.Name, err)
 	}
 	return nil
+}
+
+// consoleLogPath returns the serial console log path, using flagPath when set.
+func consoleLogPath(st *State, layout projectLayout, flagPath string) string {
+	if flagPath != "" {
+		return flagPath
+	}
+	if st != nil && st.AssetDir != "" {
+		return filepath.Join(st.AssetDir, "console.log")
+	}
+	if layout.AssetDir != "" {
+		return filepath.Join(layout.AssetDir, "console.log")
+	}
+	return ""
+}
+
+func consoleShellJoin(args []string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = consoleShellQuote(arg)
+	}
+	return strings.Join(quoted, " ")
+}
+
+func consoleShellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(s, " \t\n\"'\\$`") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

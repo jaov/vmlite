@@ -73,6 +73,27 @@ vmlite status --json vm.json || true
 
 The JSON document is still emitted with `running: false`.
 
+## Debugging a VM
+
+Start with the read-only inspection commands:
+
+```bash
+vmlite inspect vm.json
+vmlite inspect --json vm.json
+vmlite inspect --xml vm.json > domain.xml
+```
+
+`inspect` shows the domain state, disk capacity/allocation, backing chain,
+media, MAC/network, live addresses, installer state, provisioners, and managed
+paths.
+
+For serial boot failures, record the console while attaching:
+
+```bash
+vmlite console --log vm.json
+# log: .vmlite/<name>/console.log
+```
+
 ## Missing host tools
 
 Install or check tools:

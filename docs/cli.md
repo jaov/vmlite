@@ -166,6 +166,32 @@ JSON output:
 `status` exits `3` when the VM is not running, missing, or not created. JSON is
 still emitted in those cases with `running: false` and a descriptive `state`.
 
+### `vmlite inspect`
+
+Show detailed, read-only VM diagnostics: domain state, UUID, CPU/memory,
+disks and backing chains, media, network interfaces, live addresses, installer
+state, provisioners, and managed paths.
+
+```text
+vmlite inspect [--state-dir DIR] [--json|--xml] [config.json]
+```
+
+| Flag | Meaning |
+|---|---|
+| `--json` | structured output for scripts |
+| `--xml` | raw libvirt domain XML for bug reports |
+
+Examples:
+
+```bash
+vmlite inspect vm.json
+vmlite inspect --json vm.json
+vmlite inspect --xml vm.json > domain.xml
+```
+
+`inspect` is read-only and never changes domain or pool state. It exits `3` when
+the VM is missing or has not been created.
+
 ### `vmlite start`
 
 Start a stopped VM.
@@ -235,13 +261,17 @@ vmlite scp --recursive ./assets /opt/assets vm.json
 Attach to the serial console or print graphical display details.
 
 ```text
-vmlite console [--state-dir DIR] [--type auto|serial|vnc] [--dry-run] [config.json]
+vmlite console [--state-dir DIR] [--type auto|serial|vnc] [--log] [--log-file PATH] [--dry-run] [config.json]
 ```
 
 - `auto` prints VNC/SPICE details when a display exists, otherwise attaches to
   the serial console.
 - `vnc` only prints the display and a `virt-viewer` hint.
 - `serial` attaches with `virsh console --force`.
+- `--log` records serial output to `.vmlite/<name>/console.log`.
+- `--log-file PATH` records to a custom path and implies `--log`.
+- Serial logging uses the host `script` utility and requires `--type serial`
+  or a serial `auto` console.
 
 ### `vmlite list`
 

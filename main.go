@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-var errUsage = errors.New("usage: vmlite [up|provision|status|start|stop|restart|ssh|scp|console|list|destroy|validate|schema|install|doctor|version|help] [options] [config.json]")
+var errUsage = errors.New("usage: vmlite [up|provision|status|inspect|start|stop|restart|ssh|scp|console|list|destroy|validate|schema|install|doctor|version|help] [options] [config.json]")
 
 func main() {
 	err := dispatch(os.Args[1:])
@@ -49,6 +49,8 @@ func dispatch(args []string) error {
 		return runProvision(args[1:])
 	case "status":
 		return runStatus(args[1:])
+	case "inspect":
+		return runInspect(args[1:])
 	case "start":
 		return runStart(args[1:])
 	case "stop":

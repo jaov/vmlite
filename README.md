@@ -113,6 +113,7 @@ vmlite validate vm.json
 | `up` | create or start the VM (default command) |
 | `provision` | run or rerun provisioners; finish automated installers |
 | `status` | show VM, IP, installer, and provisioner state |
+| `inspect` | show detailed VM, disk, network, and libvirt state |
 | `start` | start a stopped VM |
 | `stop` | gracefully stop a running VM |
 | `restart` | reboot a running VM or start a stopped VM |

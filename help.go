@@ -62,6 +62,21 @@ func commands() []command {
 			},
 		},
 		{
+			Name:    "inspect",
+			Summary: "Show detailed VM, disk, network, and libvirt state",
+			Usage:   "vmlite inspect [--json|--xml] [config.json]",
+			Flags: func() *flag.FlagSet {
+				fs, _, _, _ := inspectFlagSet()
+				return fs
+			},
+			Examples: []string{
+				"vmlite inspect",
+				"vmlite inspect vm.json",
+				"vmlite inspect --json vm.json",
+				"vmlite inspect --xml vm.json",
+			},
+		},
+		{
 			Name:    "start",
 			Summary: "Start a stopped VM",
 			Usage:   "vmlite start [options] [config.json]",
@@ -130,13 +145,14 @@ func commands() []command {
 			Summary: "Attach to serial or print graphical details",
 			Usage:   "vmlite console [options] [config.json]",
 			Flags: func() *flag.FlagSet {
-				fs, _, _, _ := consoleFlagSet()
+				fs, _, _, _, _, _ := consoleFlagSet()
 				return fs
 			},
 			Examples: []string{
 				"vmlite console vm.json",
 				"vmlite console --type vnc vm.json",
 				"vmlite console --type serial vm.json",
+				"vmlite console --log vm.json",
 			},
 		},
 		{
