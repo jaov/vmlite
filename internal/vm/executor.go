@@ -1,4 +1,4 @@
-package main
+package vm
 
 import (
 	"fmt"
@@ -8,12 +8,16 @@ import (
 	"strconv"
 	"strings"
 
+	"vmlite/internal/config"
+	"vmlite/internal/host"
 	guestinstall "vmlite/internal/installer"
+	"vmlite/internal/libvirt"
+	"vmlite/internal/media"
 )
 
 // buildVirtInstallArgs translates cfg and libvirtURI into the virt-install
 // argument list.
-func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
+func BuildVirtInstallArgs(cfg *config.Config, libvirtURI string) ([]string, error) {
 	args := []string{
 		"--connect", libvirtURI,
 		"--name", cfg.Name,
@@ -22,7 +26,7 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 	}
 
 	osVariant := strings.TrimSpace(cfg.OSVariant)
-	if osVariant == "" && cfg.Source.Type == sourceISO {
+	if osVariant == "" && cfg.Source.Type == config.SourceISO {
 		// Installer media often has no osinfo entry (for example OpenBSD).
 		// Ask virt-install to detect, but fall back to generic instead of
 		// failing the install.
@@ -36,11 +40,11 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 		return nil, err
 	}
 	if spec.KernelBoot {
-		if cfg.Firmware == firmwareUEFI {
-			return nil, fmt.Errorf("installer %q uses direct kernel boot, which currently requires firmware %q", spec.Type, firmwareBIOS)
+		if cfg.Firmware == config.FirmwareUEFI {
+			return nil, fmt.Errorf("installer %q uses direct kernel boot, which currently requires firmware %q", spec.Type, config.FirmwareBIOS)
 		}
 	} else {
-		args = append(args, bootArgs(cfg.Firmware, spec.BootOrder, cfg.SecureBoot)...)
+		args = append(args, BootArgs(cfg.Firmware, spec.BootOrder, cfg.SecureBoot)...)
 	}
 	if cfg.TPM != nil {
 		args = append(args, "--tpm", fmt.Sprintf("backend.type=%s,backend.version=%s", cfg.TPMBackend(), cfg.TPMVersion()))
@@ -51,7 +55,7 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 		args = append(args, "--check", "disk_size=off")
 	}
 
-	sourceArgs, err := buildSourceArgs(cfg, spec)
+	sourceArgs, err := BuildSourceArgs(cfg, spec)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +86,7 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 		if device == "" {
 			device = "disk"
 		}
-		format, err := extraDiskFormat(d)
+		format, err := media.ExtraDiskFormat(d)
 		if err != nil {
 			return nil, err
 		}
@@ -96,13 +100,13 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 	for _, m := range cfg.Mounts {
 		mountType := m.Type
 		if mountType == "" {
-			mountType = mountType9P
+			mountType = config.MountType9P
 		}
 		switch mountType {
-		case mountTypeNone:
+		case config.MountTypeNone:
 			continue
-		case mountTypeVirtioFS:
-			return nil, fmt.Errorf("mount type %q is not implemented yet", mountTypeVirtioFS)
+		case config.MountTypeVirtioFS:
+			return nil, fmt.Errorf("mount type %q is not implemented yet", config.MountTypeVirtioFS)
 		}
 
 		source, err := filepath.Abs(m.Source)
@@ -119,16 +123,16 @@ func buildVirtInstallArgs(cfg *Config, libvirtURI string) ([]string, error) {
 	return args, nil
 }
 
-func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
+func BuildSourceArgs(cfg *config.Config, spec guestinstall.Spec) ([]string, error) {
 	switch cfg.Source.Type {
-	case sourceNone:
+	case config.SourceNone:
 		diskArgs, err := primaryDiskArgs(cfg)
 		if err != nil {
 			return nil, err
 		}
 		return append(diskArgs, "--install", "no_install=yes"), nil
 
-	case sourceCloudImage:
+	case config.SourceCloudImage:
 		overlay, err := cfg.OverlayPath()
 		if err != nil {
 			return nil, err
@@ -154,7 +158,7 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 		args = append(args, "--events", "on_reboot=restart,on_poweroff=destroy,on_crash=restart")
 		return args, nil
 
-	case sourceInstallTree:
+	case config.SourceInstallTree:
 		diskArgs, err := primaryDiskArgs(cfg)
 		if err != nil {
 			return nil, err
@@ -165,7 +169,7 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 		}
 		return args, nil
 
-	case sourceISO:
+	case config.SourceISO:
 		diskArgs, err := primaryDiskArgs(cfg)
 		if err != nil {
 			return nil, err
@@ -186,7 +190,7 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 		}
 		args := diskArgs
 		if spec.KernelBoot {
-			kernel, initrd, err := prepareInstallerKernel(cfg, spec)
+			kernel, initrd, err := media.PrepareInstallerKernel(cfg, spec)
 			if err != nil {
 				return nil, err
 			}
@@ -223,7 +227,7 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 		}
 		return args, nil
 
-	case sourceDisk:
+	case config.SourceDisk:
 		format, err := cfg.SourceDiskFormat()
 		if err != nil {
 			return nil, err
@@ -242,7 +246,7 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 			"--events", "on_reboot=restart,on_poweroff=destroy,on_crash=restart",
 		}, nil
 
-	case sourcePXE:
+	case config.SourcePXE:
 		diskArgs, err := primaryDiskArgs(cfg)
 		if err != nil {
 			return nil, err
@@ -254,7 +258,7 @@ func buildSourceArgs(cfg *Config, spec guestinstall.Spec) ([]string, error) {
 	}
 }
 
-func primaryDiskArgs(cfg *Config) ([]string, error) {
+func primaryDiskArgs(cfg *config.Config) ([]string, error) {
 	bus := cfg.DiskBus()
 	if strings.TrimSpace(cfg.Disk.Path) != "" {
 		path, err := filepath.Abs(cfg.Disk.Path)
@@ -274,7 +278,7 @@ func primaryDiskArgs(cfg *Config) ([]string, error) {
 	return []string{"--disk", spec}, nil
 }
 
-func primaryDiskArgsBus(cfg *Config, defaultBus string) ([]string, error) {
+func primaryDiskArgsBus(cfg *config.Config, defaultBus string) ([]string, error) {
 	args, err := primaryDiskArgs(cfg)
 	if err != nil {
 		return args, err
@@ -291,8 +295,8 @@ func primaryDiskArgsBus(cfg *Config, defaultBus string) ([]string, error) {
 // bootArgs composes firmware and boot order into one --boot argument. A boot
 // order is only needed when a source must boot installer media and then switch
 // to the installed disk.
-func bootArgs(firmware string, order []string, secureBoot bool) []string {
-	if firmware == firmwareUEFI {
+func BootArgs(firmware string, order []string, secureBoot bool) []string {
+	if firmware == config.FirmwareUEFI {
 		parts := []string{"uefi"}
 		if secureBoot {
 			parts = append(parts, "loader.secure=on")
@@ -306,10 +310,10 @@ func bootArgs(firmware string, order []string, secureBoot bool) []string {
 	return []string{"--boot", strings.Join(order, ",")}
 }
 
-func buildGraphicsArgs(cfg *Config) ([]string, error) {
+func buildGraphicsArgs(cfg *config.Config) ([]string, error) {
 	graphicsType := cfg.Graphics.Type
 	if graphicsType == "" {
-		graphicsType = graphicsNone
+		graphicsType = config.GraphicsNone
 	}
 	listen := cfg.Graphics.Listen
 	if listen == "" {
@@ -317,39 +321,39 @@ func buildGraphicsArgs(cfg *Config) ([]string, error) {
 	}
 
 	switch graphicsType {
-	case graphicsNone:
+	case config.GraphicsNone:
 		return []string{"--graphics", "none"}, nil
-	case graphicsVNC:
+	case config.GraphicsVNC:
 		return []string{"--graphics", "vnc,listen=" + listen}, nil
-	case graphicsSPICE:
+	case config.GraphicsSPICE:
 		return []string{"--graphics", "spice,listen=" + listen}, nil
 	default:
 		return nil, fmt.Errorf("unsupported graphics.type %q", graphicsType)
 	}
 }
 
-func buildNetworkArgs(cfg *Config, libvirtURI string) ([]string, error) {
+func buildNetworkArgs(cfg *config.Config, libvirtURI string) ([]string, error) {
 	mode := cfg.Network.Mode
 	if mode == "" {
-		mode = networkModeAuto
+		mode = config.NetworkModeAuto
 	}
 
 	var spec string
 	switch mode {
-	case networkModeAuto:
+	case config.NetworkModeAuto:
 		switch libvirtURI {
-		case systemURI:
+		case host.SystemURI:
 			spec = "network=default"
-		case sessionURI:
+		case host.SessionURI:
 			spec = "user"
 		default:
 			return nil, fmt.Errorf("unsupported libvirt URI %q", libvirtURI)
 		}
-	case networkModeDefault:
+	case config.NetworkModeDefault:
 		spec = "network=default"
-	case networkModeUser:
+	case config.NetworkModeUser:
 		spec = "user"
-	case networkModeBridge:
+	case config.NetworkModeBridge:
 		spec = "bridge=" + cfg.Network.Bridge
 	default:
 		return nil, fmt.Errorf("unsupported network.mode %q", mode)
@@ -363,28 +367,28 @@ func buildNetworkArgs(cfg *Config, libvirtURI string) ([]string, error) {
 
 // RunVirtInstall provisions the VM described by cfg using virt-install.
 // Output is streamed directly to the terminal.
-func RunVirtInstall(cfg *Config, libvirtURI string) error {
-	args, err := buildVirtInstallArgs(cfg, libvirtURI)
+func RunVirtInstall(cfg *config.Config, libvirtURI string) error {
+	args, err := BuildVirtInstallArgs(cfg, libvirtURI)
 	if err != nil {
 		return err
 	}
 
-	if cfg.Source.Type == sourceCloudImage {
-		if _, err := prepareOverlay(cfg); err != nil {
+	if cfg.Source.Type == config.SourceCloudImage {
+		if _, err := media.PrepareOverlay(cfg); err != nil {
 			return err
 		}
 	}
-	if _, err := prepareSeed(cfg); err != nil {
+	if _, err := media.PrepareSeed(cfg); err != nil {
 		return err
 	}
 	spec, err := cfg.InstallerSpec()
 	if err != nil {
 		return err
 	}
-	if _, err := prepareInstallerISO(cfg, spec); err != nil {
+	if _, err := media.PrepareInstallerISO(cfg, spec); err != nil {
 		return err
 	}
-	if _, err := prepareInstallerSeed(cfg); err != nil {
+	if _, err := media.PrepareInstallerSeed(cfg); err != nil {
 		return err
 	}
 
@@ -396,17 +400,17 @@ func RunVirtInstall(cfg *Config, libvirtURI string) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("virt-install failed: %w", err)
 	}
-	if err := configureInstallerLifecycle(cfg, libvirtURI, spec); err != nil {
+	if err := ConfigureInstallerLifecycle(cfg, libvirtURI, spec); err != nil {
 		return err
 	}
 	return nil
 }
 
-func configureInstallerLifecycle(cfg *Config, libvirtURI string, spec guestinstall.Spec) error {
+func ConfigureInstallerLifecycle(cfg *config.Config, libvirtURI string, spec guestinstall.Spec) error {
 	if spec.Completion != guestinstall.CompletionSSH {
 		return nil
 	}
-	if out, err := runVirsh(libvirtURI, "set-lifecycle-action", cfg.Name, "reboot", "restart", "--live", "--config"); err != nil {
+	if out, err := libvirt.Run(libvirtURI, "set-lifecycle-action", cfg.Name, "reboot", "restart", "--live", "--config"); err != nil {
 		return fmt.Errorf("configure installer reboot lifecycle for %q: %w: %s", cfg.Name, err, strings.TrimSpace(out))
 	}
 	return nil
