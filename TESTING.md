@@ -430,6 +430,47 @@ Ubuntu/Debian, Fedora/RHEL, Arch, openSUSE, and the FreeBSD host rejection.
 `install.sh` is tested separately as a bootstrap dry run. Read-only host checks
 are available through `vmlite doctor`.
 
+## Package smoke tests
+
+The release packages can be tested by dogfooding vmlite itself: boot a
+cloud-image guest, copy in the `.deb` or `.rpm`, install it with the distro
+package manager, verify the CLI, then uninstall it.
+
+Build local packages first:
+
+```bash
+mkdir -p dist
+go build -trimpath -ldflags "-s -w -X main.version=v0.1.0" -o dist/vmlite-linux-amd64 .
+VMLITE_VERSION=0.1.0 nfpm package --config packaging/nfpm.yaml --packager deb --target dist/
+VMLITE_VERSION=0.1.0 nfpm package --config packaging/nfpm.yaml --packager rpm --target dist/
+```
+
+Then run the dogfood script:
+
+```bash
+VMLITE_BIN="$(pwd)/vmlite" \
+VMLITE_TEST_DEBIAN_IMAGE=/tmp/debian-12-genericcloud-amd64.qcow2 \
+  ./scripts/package-smoke-test.sh debian dist/vmlite_0.1.0-1_amd64.deb
+
+VMLITE_BIN="$(pwd)/vmlite" \
+VMLITE_TEST_FEDORA_IMAGE=/tmp/Fedora-Cloud-Base-Generic-45-1.4.x86_64.qcow2 \
+  ./scripts/package-smoke-test.sh fedora dist/vmlite-0.1.0-1.x86_64.rpm
+```
+
+The script creates a VM with `vmlite up`, copies the package with `vmlite scp`,
+installs and verifies it over `vmlite ssh`, uninstalls it, and destroys the VM.
+It checks:
+
+- dependency resolution by `apt` or `dnf`
+- `/usr/bin/vmlite` and `vmlite version`
+- `vmlite --help` and `vmlite doctor`
+- the man page
+- removal of the binary, package, and man page
+
+Fedora 45 and Debian 12 were verified with these commands. Debian 13's
+genericcloud image boot-looped in this environment, so Debian 12 is the
+recommended smoke-test image for now.
+
 ## Inspecting leftovers
 
 Cleanup normally leaves nothing behind. To check:
