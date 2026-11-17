@@ -57,7 +57,7 @@ func runSCP(args []string) error {
 	if *recursive {
 		scpArgs = append(scpArgs, "-r")
 	}
-	scpArgs = append(scpArgs, local, target.user+"@"+target.ip+":"+remote)
+	scpArgs = append(scpArgs, local, target.User+"@"+target.IP+":"+remote)
 	if *dryRun {
 		fmt.Printf("+ scp %s\n", strings.Join(scpArgs, " "))
 		return nil
@@ -68,7 +68,7 @@ func runSCP(args []string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("scp %s to %s@%s:%s: %w", local, target.user, target.ip, remote, err)
+		return fmt.Errorf("scp %s to %s@%s:%s: %w", local, target.User, target.IP, remote, err)
 	}
 	return nil
 }

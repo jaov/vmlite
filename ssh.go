@@ -36,7 +36,7 @@ func runSSH(args []string) error {
 	}
 
 	sshArgs := sshOptionArgs(target, *command == "" && stdinIsTerminal())
-	sshArgs = append(sshArgs, target.user+"@"+target.ip)
+	sshArgs = append(sshArgs, target.User+"@"+target.IP)
 	if *command != "" {
 		sshArgs = append(sshArgs, *command)
 	}
@@ -50,7 +50,7 @@ func runSSH(args []string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ssh %s@%s: %w", target.user, target.ip, err)
+		return fmt.Errorf("ssh %s@%s: %w", target.User, target.IP, err)
 	}
 	return nil
 }
