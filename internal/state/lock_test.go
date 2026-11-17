@@ -1,4 +1,4 @@
-package main
+package state
 
 import (
 	"path/filepath"
@@ -6,23 +6,23 @@ import (
 	"testing"
 )
 
-func TestProjectLockExcludesSecondProcess(t *testing.T) {
+func TestAcquireLockExcludesSecondProcess(t *testing.T) {
 	dir := t.TempDir()
-	layout := projectLayout{
+	layout := ProjectLayout{
 		StateDir: dir,
 		LockFile: filepath.Join(dir, "vm.lock"),
 	}
-	first, err := acquireProjectLock(layout)
+	first, err := AcquireLock(layout)
 	if err != nil {
 		t.Fatalf("first lock: %v", err)
 	}
-	if _, err := acquireProjectLock(layout); err == nil || !strings.Contains(err.Error(), "locked") {
+	if _, err := AcquireLock(layout); err == nil || !strings.Contains(err.Error(), "locked") {
 		t.Fatalf("second lock = %v, want locked error", err)
 	}
 	if err := first.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	second, err := acquireProjectLock(layout)
+	second, err := AcquireLock(layout)
 	if err != nil {
 		t.Fatalf("reacquire: %v", err)
 	}

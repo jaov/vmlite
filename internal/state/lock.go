@@ -1,4 +1,4 @@
-package main
+package state
 
 import (
 	"fmt"
@@ -6,11 +6,13 @@ import (
 	"syscall"
 )
 
-type projectLock struct {
+// Lock is a held project lock.
+type Lock struct {
 	file *os.File
 }
 
-func acquireProjectLock(layout projectLayout) (*projectLock, error) {
+// AcquireLock takes a non-blocking exclusive lock for a project.
+func AcquireLock(layout ProjectLayout) (*Lock, error) {
 	if layout.LockFile == "" {
 		return nil, fmt.Errorf("state lock path is empty")
 	}
@@ -28,10 +30,11 @@ func acquireProjectLock(layout projectLayout) (*projectLock, error) {
 		}
 		return nil, fmt.Errorf("lock state %q: %w", layout.LockFile, err)
 	}
-	return &projectLock{file: f}, nil
+	return &Lock{file: f}, nil
 }
 
-func (l *projectLock) Close() error {
+// Close releases the lock.
+func (l *Lock) Close() error {
 	if l == nil || l.file == nil {
 		return nil
 	}

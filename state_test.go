@@ -4,29 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
-
-func TestProjectLayout(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "vm.json")
-
-	layout, err := newProjectLayout(configPath, "", "dev")
-	if err != nil {
-		t.Fatalf("newProjectLayout: %v", err)
-	}
-	if layout.StateDir != filepath.Join(dir, ".vmlite") {
-		t.Fatalf("StateDir = %q", layout.StateDir)
-	}
-	if layout.StateFile != filepath.Join(dir, ".vmlite", "dev.json") {
-		t.Fatalf("StateFile = %q", layout.StateFile)
-	}
-	if layout.AssetDir != filepath.Join(dir, ".vmlite", "dev") {
-		t.Fatalf("AssetDir = %q", layout.AssetDir)
-	}
-}
 
 func TestHashConfig(t *testing.T) {
 	cfg := Config{Name: "dev", Memory: 1024, CPUs: 1, Source: Source{Type: sourceNone}, Disk: Disk{Size: 5}}
@@ -48,30 +28,6 @@ func TestHashConfig(t *testing.T) {
 	}
 	if a == c {
 		t.Fatal("hash did not change after a config change")
-	}
-}
-
-func TestStateSaveLoad(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.json")
-	st := &State{
-		Version:    1,
-		Name:       "dev",
-		ConfigPath: "/project/vm.json",
-		ConfigHash: "abc",
-		LibvirtURI: systemURI,
-		UUID:       "uuid",
-		CreatedAt:  "now",
-		UpdatedAt:  "now",
-	}
-	if err := saveState(path, st); err != nil {
-		t.Fatalf("saveState: %v", err)
-	}
-	got, err := loadState(path)
-	if err != nil {
-		t.Fatalf("loadState: %v", err)
-	}
-	if got == nil || !reflect.DeepEqual(*got, *st) {
-		t.Fatalf("state = %+v, want %+v", got, st)
 	}
 }
 
