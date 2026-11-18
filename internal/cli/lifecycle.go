@@ -41,6 +41,20 @@ func upFlagSet() (*flag.FlagSet, *string, *string, *bool, *bool, *bool) {
 	return fs, connect, stateDir, recreate, dryRun, offline
 }
 
+func configureAutostart(cfg *Config, uri string, dryRun bool) error {
+	if !cfg.Autostart {
+		return nil
+	}
+	if dryRun {
+		fmt.Printf("Would enable autostart for VM %q\n", cfg.Name)
+		return nil
+	}
+	if out, err := runVirsh(uri, "autostart", cfg.Name); err != nil {
+		return fmt.Errorf("enable autostart for VM %q: %w: %s", cfg.Name, err, strings.TrimSpace(out))
+	}
+	return nil
+}
+
 func runUp(args []string) error {
 	fs, connect, stateDir, recreate, dryRun, offline := upFlagSet()
 	target, err := parsePositional(fs, args)
@@ -129,7 +143,7 @@ func runUp(args []string) error {
 		}
 		if *dryRun {
 			fmt.Printf("Would create VM %q via %s\n", cfg.Name, uri)
-			return nil
+			return configureAutostart(cfg, uri, true)
 		}
 		if cfg.NeedsSSH() {
 			if err := ensureSSHKey(cfg, layout); err != nil {
@@ -150,6 +164,9 @@ func runUp(args []string) error {
 			return fmt.Errorf("VM %q was created but state could not be written: %w", cfg.Name, err)
 		}
 		fmt.Printf("VM %q created successfully via %s\n", cfg.Name, uri)
+		if err := configureAutostart(cfg, uri, false); err != nil {
+			return err
+		}
 		if cfg.HasInstaller() {
 			fmt.Printf("Installer %q started; after it reboots, run: vmlite provision %s\n", cfg.Source.Installer.Type, configPath)
 			if cfg.Source.Installer.Type == guestinstall.WindowsAutoUnattend {
@@ -183,6 +200,10 @@ func runUp(args []string) error {
 			return nil
 		}
 		return fmt.Errorf("state exists for %q but its domain is missing; use --recreate", cfg.Name)
+	}
+
+	if err := configureAutostart(cfg, uri, *dryRun); err != nil {
+		return err
 	}
 
 	switch {

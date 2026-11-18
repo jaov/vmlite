@@ -47,6 +47,7 @@ Example configurations live in `examples/`.
 |---|---|---|
 | `name` | string | VM/domain name; required |
 | `state_dir` | string | state directory; relative paths resolve from the config file |
+| `autostart` | bool | enable libvirt autostart at host boot |
 | `memory` | int | memory in MiB |
 | `cpus` | int | vCPU count |
 | `os_variant` | string | libvirt/osinfo variant, e.g. `ubuntu24.04`, `win11` |

@@ -260,6 +260,34 @@ func TestNameTargets(t *testing.T) {
 	})
 }
 
+func TestConfigureAutostart(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "virsh.log")
+	fakeVirsh(t, "#!/bin/sh\nprintf '%s\\n' \"$@\" >> "+logPath+"\nexit 0\n")
+
+	cfg := &Config{Name: "cmd-test", Autostart: true}
+	if err := configureAutostart(cfg, systemURI, false); err != nil {
+		t.Fatalf("configureAutostart: %v", err)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read virsh log: %v", err)
+	}
+	if !strings.Contains(string(data), "autostart\ncmd-test") {
+		t.Fatalf("virsh autostart not called:\n%s", data)
+	}
+
+	cfg.Autostart = false
+	if err := os.Remove(logPath); err != nil {
+		t.Fatalf("remove log: %v", err)
+	}
+	if err := configureAutostart(cfg, systemURI, false); err != nil {
+		t.Fatalf("configureAutostart disabled: %v", err)
+	}
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf("virsh called with autostart disabled: %v", err)
+	}
+}
+
 func TestSSHSCPDryRun(t *testing.T) {
 	configPath, _, _ := commandFixture(t)
 	fakeVirsh(t, "#!/bin/sh\ncase \"$*\" in *' domstate '*) echo running;; esac\nexit 0\n")

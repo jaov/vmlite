@@ -39,6 +39,7 @@ func TestLoadConfigValid(t *testing.T) {
 		"network": {"mode": "bridge", "bridge": "br0", "model": "virtio"},
 		"graphics": {"type": "vnc", "listen": "127.0.0.1"},
 		"autoconsole": true,
+		"autostart": true,
 		"extra_disks": [
 			{"path": "/tmp/config.iso", "device": "cdrom", "format": "raw", "readonly": true}
 		]
@@ -72,6 +73,9 @@ func TestLoadConfigValid(t *testing.T) {
 	}
 	if !cfg.Autoconsole {
 		t.Error("Autoconsole = false, want true")
+	}
+	if !cfg.Autostart {
+		t.Error("Autostart = false, want true")
 	}
 	if len(cfg.ExtraDisks) != 1 || !cfg.ExtraDisks[0].ReadOnly {
 		t.Errorf("extra disks = %+v", cfg.ExtraDisks)
@@ -511,6 +515,7 @@ func TestHashIgnoresRuntimeFields(t *testing.T) {
 	cfg.AssetDir = "/tmp/assets"
 	cfg.ConfigDir = "/tmp/config"
 	cfg.StateDir = "/tmp/state"
+	cfg.Autostart = true
 	cfg.SSHPublicKey = "ssh-ed25519 AAAA"
 	cfg.SSHKeyGenerated = true
 	cfg.WindowsPassword = "secret"
