@@ -28,6 +28,9 @@ _vmlite() {
         init)
             opts="--template --name --force --stdout --list --help"
             ;;
+        ssh)
+            opts="--state-dir --user --command --timeout --dry-run --print-config --help"
+            ;;
         provision)
             opts="--state-dir --force --dry-run --timeout --help"
             ;;

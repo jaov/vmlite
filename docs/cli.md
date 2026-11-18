@@ -313,6 +313,8 @@ vmlite ssh [--state-dir DIR] [--user USER] [--command COMMAND] [--timeout DURATI
 - Uses the managed SSH key and user from state.
 - Requires `qemu:///system` with a guest-visible network.
 - `--command` runs non-interactively; otherwise an interactive shell is opened.
+- `--print-config` prints a `Host` block for `~/.ssh/config` instead of
+  connecting.
 
 Examples:
 
@@ -321,6 +323,7 @@ vmlite ssh vm.json
 vmlite ssh dev
 vmlite ssh --command 'uname -a' dev
 vmlite ssh --user root dev
+vmlite ssh --print-config dev
 ```
 
 `--command` runs through the remote shell. To send a local multi-line script:

@@ -352,3 +352,24 @@ func TestListJSON(t *testing.T) {
 		t.Fatalf("entries = %+v", entries)
 	}
 }
+
+func TestSSHPrintConfig(t *testing.T) {
+	configPath, _, _ := commandFixture(t)
+	fakeVirsh(t, "#!/bin/sh\ncase \"$*\" in *' domstate '*) echo running;; esac\nexit 0\n")
+	out, err := captureCommandOutput(t, func() error {
+		return runSSH([]string{"--print-config", "--timeout", "0", configPath})
+	})
+	if err != nil {
+		t.Fatalf("ssh --print-config: %v", err)
+	}
+	for _, want := range []string{
+		"Host cmd-test",
+		"HostName 192.0.2.10",
+		"User root",
+		"IdentityFile /tmp/key",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("print-config missing %q:\n%s", want, out)
+		}
+	}
+}

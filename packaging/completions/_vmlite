@@ -51,6 +51,16 @@ _vmlite() {
                         '--list[list available templates]' \
                         '*:config:_files'
                     ;;
+                ssh)
+                    _arguments \
+                        '--state-dir[state directory]:dir:_files -/' \
+                        '--user[SSH user override]:user:' \
+                        '--command[run a remote command]:command:' \
+                        '--timeout[readiness timeout]:duration:' \
+                        '--dry-run[print the ssh command without running it]' \
+                        '--print-config[print an SSH config block]' \
+                        '*:name or config:_files'
+                    ;;
                 start|restart)
                     _arguments \
                         '--state-dir[state directory]:dir:_files -/' \

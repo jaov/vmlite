@@ -140,13 +140,14 @@ func commands() []command {
 			Summary: "Open a shell or run a command in the guest",
 			Usage:   "vmlite ssh [options] [name|config.json]",
 			Flags: func() *flag.FlagSet {
-				fs, _, _, _, _, _ := sshFlagSet()
+				fs, _, _, _, _, _, _ := sshFlagSet()
 				return fs
 			},
 			Examples: []string{
 				"vmlite ssh vm.json",
 				"vmlite ssh dev",
 				"vmlite ssh --command 'uname -a' dev",
+				"vmlite ssh --print-config dev",
 			},
 		},
 		{
