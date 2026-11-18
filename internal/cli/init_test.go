@@ -102,3 +102,17 @@ func TestInitMinimalConfigLoads(t *testing.T) {
 		t.Fatalf("generated config is invalid: %v", err)
 	}
 }
+
+func TestInitCloudImageConfigLoads(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vm.json")
+	if err := runInit([]string{"--template", "cloud-image", path}); err != nil {
+		t.Fatalf("runInit: %v", err)
+	}
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("generated config is invalid: %v", err)
+	}
+	if cfg.Source.URL == "" || cfg.Source.SHA256 == "" {
+		t.Fatalf("cloud-image source = %+v", cfg.Source)
+	}
+}

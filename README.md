@@ -97,7 +97,8 @@ A cloud-image configuration:
   "firmware": "bios",
   "source": {
     "type": "cloud_image",
-    "path": "/var/cache/vmlite/ubuntu-24.04.img"
+    "url": "https://cloud-images.ubuntu.com/minimal/releases/noble/release-20261017/ubuntu-24.04-minimal-cloudimg-amd64.img",
+    "sha256": "b3296484e362ba2e713489a5de6225c719d9500962bde25d15f2f21e512c7658"
   },
   "disk": { "size": 10, "format": "qcow2" },
   "network": { "mode": "auto" },

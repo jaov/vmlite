@@ -11,9 +11,9 @@ vmlite init --template arch-script --name arch-dev
 vmlite init --list
 ```
 
-The default `cloud-image` template references a local image path; edit
-`source.path` or use `source.url` plus `source.sha256`. The `minimal` template
-is a runnable blank VM and needs no media.
+The default `cloud-image` template downloads a pinned Ubuntu cloud image on
+first `up`, so it validates and runs without editing media paths. The `minimal`
+template is a runnable blank VM and needs no media.
 
 The machine-readable schema is available with:
 
@@ -32,7 +32,8 @@ Example configurations live in `examples/`.
   "cpus": 2,
   "source": {
     "type": "cloud_image",
-    "path": "/var/cache/vmlite/ubuntu-24.04.img"
+    "url": "https://cloud-images.ubuntu.com/minimal/releases/noble/release-20261017/ubuntu-24.04-minimal-cloudimg-amd64.img",
+    "sha256": "b3296484e362ba2e713489a5de6225c719d9500962bde25d15f2f21e512c7658"
   },
   "disk": { "size": 10 },
   "network": { "mode": "auto" },

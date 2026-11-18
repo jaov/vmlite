@@ -121,6 +121,10 @@ The default output is `vm.json`. Templates live in `examples/` and include
 cloud images, automated Linux installers, Windows, manual ISO, prebuilt disk,
 provisioner uploads, and a `minimal` runnable VM.
 
+The `cloud-image` template uses a pinned URL and digest; the first `up`
+downloads it into the cache. Installer and ISO templates reference local media
+paths that must be edited before booting.
+
 Examples:
 
 ```bash
@@ -131,8 +135,7 @@ vmlite init --list
 vmlite init --stdout --template cloud-image
 ```
 
-Most templates reference media paths that must be edited before booting. Use
-`vmlite validate vm.json` after editing.
+Use `vmlite validate vm.json` after editing installer or ISO media paths.
 
 ### `vmlite provision`
 
