@@ -14,7 +14,7 @@ func TestTopLevelHelp(t *testing.T) {
 	help := out.String()
 	for _, want := range []string{
 		"vmlite - reproducible local KVM guests",
-		"up", "provision", "status", "inspect", "destroy", "validate", "install", "doctor", "help",
+		"up", "init", "provision", "status", "inspect", "destroy", "validate", "install", "doctor", "help",
 		"vmlite help <command>",
 	} {
 		if !strings.Contains(help, want) {

@@ -33,6 +33,21 @@ func commands() []command {
 			},
 		},
 		{
+			Name:    "init",
+			Summary: "Write a starter vm.json from an example template",
+			Usage:   "vmlite init [options] [config.json]",
+			Flags: func() *flag.FlagSet {
+				fs, _, _, _, _, _ := initFlagSet()
+				return fs
+			},
+			Examples: []string{
+				"vmlite init",
+				"vmlite init --template minimal",
+				"vmlite init --template arch-script --name arch",
+				"vmlite init --list",
+			},
+		},
+		{
 			Name:    "provision",
 			Summary: "Run pending provisioners or finish an installer",
 			Usage:   "vmlite provision [options] [config.json]",

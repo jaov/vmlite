@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-var errUsage = errors.New("usage: vmlite [up|provision|status|inspect|start|stop|restart|ssh|scp|console|list|destroy|validate|schema|install|doctor|version|help] [options] [config.json]")
+var errUsage = errors.New("usage: vmlite [up|init|provision|status|inspect|start|stop|restart|ssh|scp|console|list|destroy|validate|schema|install|doctor|version|help] [options] [config.json]")
 
 // Main runs the CLI and returns the process exit status.
 func Main(args []string) int {
@@ -46,6 +46,8 @@ func dispatch(args []string) error {
 	switch args[0] {
 	case "up":
 		return runUp(args[1:])
+	case "init":
+		return runInit(args[1:])
 	case "provision":
 		return runProvision(args[1:])
 	case "status":

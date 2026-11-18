@@ -1,0 +1,11 @@
+{
+  "name": "minimal",
+  "memory": 512,
+  "cpus": 1,
+  "os_variant": "linux2024",
+  "firmware": "bios",
+  "source": { "type": "none" },
+  "disk": { "size": 1, "format": "qcow2" },
+  "network": { "mode": "user" },
+  "graphics": { "type": "none" }
+}
