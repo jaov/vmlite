@@ -11,7 +11,7 @@ _vmlite() {
         cword=$COMP_CWORD
     fi
 
-    local commands="up provision status start stop restart ssh scp console list destroy validate schema install doctor version help"
+    local commands="up init provision status start stop restart ssh scp console list destroy validate schema install doctor version help"
     local global_opts="--help -h --version"
 
     if [[ $cword -eq 1 ]]; then
@@ -24,6 +24,9 @@ _vmlite() {
     case "${words[1]}" in
         up)
             opts="--connect --state-dir --recreate --dry-run --offline --help"
+            ;;
+        init)
+            opts="--template --name --force --stdout --list --help"
             ;;
         provision)
             opts="--state-dir --force --dry-run --timeout --help"

@@ -1,4 +1,4 @@
-.TH VMLITE 1 "2026-11-17" "vmlite" "User Commands"
+.TH VMLITE 1 "2026-11-18" "vmlite" "User Commands"
 .SH NAME
 vmlite \- reproducible local KVM/libvirt virtual machines
 .SH SYNOPSIS
@@ -20,6 +20,9 @@ The default configuration file is
 .TP
 .B up
 Create or start the VM. This is the default command.
+.TP
+.B init
+Write a starter JSON configuration from an embedded example template.
 .TP
 .B provision
 Run pending provisioners, or finish an automated installer.
@@ -91,6 +94,68 @@ next to the configuration file.
 .TP
 .B \-\-dry\-run
 Print actions without changing anything.
+.SH CONFIGURATION
+The configuration is a JSON object. The default file is
+.IR vm.json .
+.B vmlite init
+writes a starter file from one of the embedded examples:
+.PP
+.RS
+.nf
+vmlite init
+vmlite init --template minimal
+vmlite init --template arch-script --name arch-dev
+vmlite init --list
+.fi
+.RE
+.PP
+A minimal cloud-image configuration:
+.PP
+.RS
+.nf
+{
+  "name": "dev",
+  "memory": 2048,
+  "cpus": 2,
+  "source": {
+    "type": "cloud_image",
+    "path": "/var/cache/vmlite/ubuntu-24.04.img"
+  },
+  "disk": { "size": 10, "format": "qcow2" },
+  "network": { "mode": "default" },
+  "graphics": { "type": "none" }
+}
+.fi
+.RE
+.PP
+Set
+.B source.type
+to
+.BR none ,
+.BR cloud_image ,
+.BR install_tree ,
+.BR iso ,
+.BR disk ,
+or
+.BR pxe .
+ISO sources can select an unattended installer with
+.BR source.installer .
+.PP
+Validate and run:
+.PP
+.RS
+.nf
+vmlite validate vm.json
+vmlite up vm.json
+vmlite status vm.json
+vmlite destroy --force vm.json
+.fi
+.RE
+.PP
+Managed state, disks, keys, and installer media live under
+.I .vmlite/
+next to the configuration. Downloaded media is cached under
+.IR ~/.cache/vmlite/ .
 .SH FILES
 .TP
 .I vm.json
@@ -102,6 +167,15 @@ Project-local state, disks, seeds, keys, and installer media.
 .I ~/.cache/vmlite/
 Default cache for downloaded cloud images and installer media.
 .SH EXAMPLES
+Create a starter configuration:
+.PP
+.RS
+.nf
+vmlite init
+vmlite init --template minimal
+.fi
+.RE
+.PP
 Create or start a VM:
 .PP
 .RS

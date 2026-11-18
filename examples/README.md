@@ -2,6 +2,7 @@
 
 | File | Purpose |
 |---|---|
+| `minimal.json` | runnable blank VM with no OS media |
 | `cloud-image.json` | Ubuntu cloud image |
 | `ubuntu-autoinstall.json` | Ubuntu autoinstall ISO |
 | `fedora-kickstart.json` | Fedora kickstart ISO |
@@ -12,6 +13,14 @@
 | `prebuilt-disk.json` | imported installed disk |
 | `provisioner-uploads.json` | provisioner uploads and env |
 | `winpe.json` | WinPE CI marker disk |
+
+Create a starter config from a template:
+
+```bash
+vmlite init
+vmlite init --template minimal
+vmlite init --list
+```
 
 Validate an example:
 

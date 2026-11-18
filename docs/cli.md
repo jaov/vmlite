@@ -80,6 +80,39 @@ vmlite up --dry-run vm.json
 vmlite up --recreate vm.json
 ```
 
+### `vmlite init`
+
+Write a starter configuration from an embedded example template.
+
+```text
+vmlite init [--template NAME] [--name NAME] [--force] [--stdout] [--list] [config.json]
+```
+
+| Flag | Meaning |
+|---|---|
+| `--template NAME` | example template; defaults to `cloud-image` |
+| `--name NAME` | override the template’s VM name |
+| `--force` | overwrite an existing config |
+| `--stdout` | print the config instead of writing it |
+| `--list` | list available templates |
+
+The default output is `vm.json`. Templates live in `examples/` and include
+cloud images, automated Linux installers, Windows, manual ISO, prebuilt disk,
+provisioner uploads, and a `minimal` runnable VM.
+
+Examples:
+
+```bash
+vmlite init
+vmlite init --template minimal
+vmlite init --template arch-script --name arch-dev
+vmlite init --list
+vmlite init --stdout --template cloud-image
+```
+
+Most templates reference media paths that must be edited before booting. Use
+`vmlite validate vm.json` after editing.
+
 ### `vmlite provision`
 
 Run pending provisioners, or finish an automated installer.

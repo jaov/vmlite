@@ -59,7 +59,8 @@ files. Use `vmlite doctor` to check host readiness.
 ## Quick start
 
 ```bash
-vmlite up                     # uses ./vm.json; `vmlite` is an alias for up
+vmlite init                   # write a starter vm.json from the cloud-image example
+vmlite up                     # edit source.path first; `vmlite` is an alias for up
 vmlite up path/to/vm.json
 vmlite status path/to/vm.json
 vmlite status --json vm.json
@@ -74,6 +75,9 @@ vmlite console vm.json
 vmlite provision vm.json
 vmlite destroy --force vm.json
 ```
+
+`vmlite init` writes a starter configuration. Use `--template minimal` for a
+runnable blank VM or `--list` to see all templates.
 
 A cloud-image configuration:
 
@@ -111,6 +115,7 @@ vmlite validate vm.json
 | Command | Purpose |
 |---|---|
 | `up` | create or start the VM (default command) |
+| `init` | write a starter `vm.json` from an example template |
 | `provision` | run or rerun provisioners; finish automated installers |
 | `status` | show VM, IP, installer, and provisioner state |
 | `inspect` | show detailed VM, disk, network, and libvirt state |

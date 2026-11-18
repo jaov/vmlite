@@ -4,6 +4,7 @@ _vmlite() {
     local -a commands
     commands=(
         'up:Create or start the VM (default)'
+        'init:Write a starter config from an example template'
         'provision:Run pending provisioners or finish an installer'
         'status:Show VM, installer, IP, and provisioner state'
         'start:Start a stopped VM'
@@ -39,6 +40,15 @@ _vmlite() {
                         '--recreate[destroy and recreate the VM]' \
                         '--dry-run[print actions without changing anything]' \
                         '--offline[do not download missing images]' \
+                        '*:config:_files'
+                    ;;
+                init)
+                    _arguments \
+                        '--template[example template]:name:' \
+                        '--name[override the VM name]:name:' \
+                        '--force[overwrite an existing config]' \
+                        '--stdout[print the config instead of writing it]' \
+                        '--list[list available templates]' \
                         '*:config:_files'
                     ;;
                 provision)

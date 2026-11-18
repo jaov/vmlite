@@ -2,6 +2,7 @@
 complete -c vmlite -f
 
 complete -c vmlite -n '__fish_use_subcommand' -a up -d 'Create or start the VM (default)'
+complete -c vmlite -n '__fish_use_subcommand' -a init -d 'Write a starter config from an example template'
 complete -c vmlite -n '__fish_use_subcommand' -a provision -d 'Run pending provisioners or finish an installer'
 complete -c vmlite -n '__fish_use_subcommand' -a status -d 'Show VM, installer, IP, and provisioner state'
 complete -c vmlite -n '__fish_use_subcommand' -a start -d 'Start a stopped VM'
@@ -24,6 +25,11 @@ complete -c vmlite -l version -d 'Print the version'
 
 complete -c vmlite -n '__fish_seen_subcommand_from up' -l connect -r -d 'libvirt connection URI'
 complete -c vmlite -n '__fish_seen_subcommand_from up provision status start stop restart destroy list validate ssh scp console' -l state-dir -r -d 'State directory'
+complete -c vmlite -n '__fish_seen_subcommand_from init' -l template -r -d 'Example template'
+complete -c vmlite -n '__fish_seen_subcommand_from init' -l name -r -d 'Override the VM name'
+complete -c vmlite -n '__fish_seen_subcommand_from init' -l force -d 'Overwrite an existing config'
+complete -c vmlite -n '__fish_seen_subcommand_from init' -l stdout -d 'Print the config instead of writing it'
+complete -c vmlite -n '__fish_seen_subcommand_from init' -l list -d 'List available templates'
 complete -c vmlite -n '__fish_seen_subcommand_from up' -l recreate -d 'Destroy and recreate the VM'
 complete -c vmlite -n '__fish_seen_subcommand_from up provision install' -l dry-run -d 'Print actions without changing anything'
 complete -c vmlite -n '__fish_seen_subcommand_from up' -l offline -d 'Do not download missing images'
