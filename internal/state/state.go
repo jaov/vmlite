@@ -28,6 +28,9 @@ type State struct {
 	SSHKeyGenerated     bool              `json:"ssh_key_generated,omitempty"`
 	SSHUser             string            `json:"ssh_user,omitempty"`
 	IP                  string            `json:"ip,omitempty"`
+	NetworkName         string            `json:"network_name,omitempty"`
+	NetworkMAC          string            `json:"network_mac,omitempty"`
+	NetworkIP           string            `json:"network_ip,omitempty"`
 	InstallerType       string            `json:"installer_type,omitempty"`
 	InstallerCompletion string            `json:"installer_completion,omitempty"`
 	InstallPhase        string            `json:"install_phase,omitempty"`

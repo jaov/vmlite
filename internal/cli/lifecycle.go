@@ -70,6 +70,9 @@ func runUp(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := resolveNetworkMAC(cfg); err != nil {
+		return err
+	}
 	if err := CheckImageTools(cfg); err != nil {
 		return err
 	}
@@ -142,6 +145,9 @@ func runUp(args []string) error {
 			return fmt.Errorf("domain %q already exists but is not managed by vmlite (no state at %s)", cfg.Name, layout.StateFile)
 		}
 		if *dryRun {
+			if err := ensureDHCPReservation(cfg, uri, true); err != nil {
+				return err
+			}
 			fmt.Printf("Would create VM %q via %s\n", cfg.Name, uri)
 			return configureAutostart(cfg, uri, true)
 		}
@@ -153,7 +159,13 @@ func runUp(args []string) error {
 		if err := os.MkdirAll(layout.AssetDir, 0o755); err != nil {
 			return fmt.Errorf("create asset dir: %w", err)
 		}
+		if err := ensureDHCPReservation(cfg, uri, false); err != nil {
+			return err
+		}
 		if err := RunVirtInstall(cfg, uri); err != nil {
+			if cfg.Network.IP != "" {
+				_ = removeDHCPReservation(uri, "default", cfg.NetworkMAC, cfg.Network.IP)
+			}
 			return err
 		}
 		st, err = newState(cfg, layout, uri, configHash, domainUUID(uri, cfg.Name))
@@ -202,6 +214,9 @@ func runUp(args []string) error {
 		return fmt.Errorf("state exists for %q but its domain is missing; use --recreate", cfg.Name)
 	}
 
+	if err := ensureDHCPReservation(cfg, uri, *dryRun); err != nil {
+		return err
+	}
 	if err := configureAutostart(cfg, uri, *dryRun); err != nil {
 		return err
 	}
@@ -440,6 +455,11 @@ func destroyState(st *State, layout projectLayout, force, dryRun bool) error {
 	}
 	if st.InstallerISOPath != "" {
 		_ = os.Remove(st.InstallerISOPath)
+	}
+	if st.NetworkIP != "" {
+		if err := removeDHCPReservation(st.LibvirtURI, st.NetworkName, st.NetworkMAC, st.NetworkIP); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: remove DHCP reservation for VM %q: %v\n", st.Name, err)
+		}
 	}
 	if st.AssetDir != "" && withinDir(filepath.Dir(layout.StateFile), st.AssetDir) {
 		_ = os.RemoveAll(st.AssetDir)

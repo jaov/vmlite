@@ -546,6 +546,19 @@ func TestBuildVirtInstallArgsBridge(t *testing.T) {
 	}
 }
 
+func TestBuildVirtInstallArgsNetworkMAC(t *testing.T) {
+	cfg := baseTestConfig()
+	cfg.NetworkMAC = "52:54:00:aa:bb:cc"
+
+	got, err := buildVirtInstallArgs(&cfg, systemURI)
+	if err != nil {
+		t.Fatalf("buildVirtInstallArgs: %v", err)
+	}
+	if !containsAll(got, "--network", "network=default,mac=52:54:00:aa:bb:cc") {
+		t.Fatalf("args missing network MAC: %q", got)
+	}
+}
+
 func TestBuildVirtInstallArgsExtraDisks(t *testing.T) {
 	dir := t.TempDir()
 	cfg := baseTestConfig()

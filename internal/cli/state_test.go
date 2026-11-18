@@ -62,11 +62,13 @@ func TestNewState(t *testing.T) {
 		AssetDir:   filepath.Join(dir, ".vmlite", "dev"),
 	}
 	cfg := &Config{
-		Name:      "dev",
-		Source:    Source{Type: sourceCloudImage, Path: "/tmp/base.qcow2", CloudInit: "/tmp/user-data"},
-		Disk:      Disk{Size: 10, Path: filepath.Join(layout.AssetDir, "disk.qcow2")},
-		Firmware:  firmwareBIOS,
-		OSVariant: "debian12",
+		Name:       "dev",
+		Source:     Source{Type: sourceCloudImage, Path: "/tmp/base.qcow2", CloudInit: "/tmp/user-data"},
+		Disk:       Disk{Size: 10, Path: filepath.Join(layout.AssetDir, "disk.qcow2")},
+		Firmware:   firmwareBIOS,
+		OSVariant:  "debian12",
+		Network:    Network{Mode: networkModeDefault, IP: "192.168.122.50"},
+		NetworkMAC: "52:54:00:aa:bb:cc",
 	}
 	st, err := newState(cfg, layout, systemURI, "hash", "uuid")
 	if err != nil {
@@ -83,6 +85,9 @@ func TestNewState(t *testing.T) {
 	}
 	if st.PoolName != "dev" {
 		t.Fatalf("PoolName = %q", st.PoolName)
+	}
+	if st.IP != "192.168.122.50" || st.NetworkIP != "192.168.122.50" || st.NetworkMAC != "52:54:00:aa:bb:cc" || st.NetworkName != "default" {
+		t.Fatalf("network state = %+v", st)
 	}
 }
 

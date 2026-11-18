@@ -121,6 +121,9 @@ func TestLoadConfigValidation(t *testing.T) {
 		{"bad mount type", base(`, "mounts": [{"source": "/tmp/data", "target": "data", "type": "nfs"}]`), "mounts[0].type must be"},
 		{"bridge without name", base(`, "network": {"mode": "bridge"}`), "network.bridge is required"},
 		{"bad network mode", base(`, "network": {"mode": "vlan"}`), "network.mode must be"},
+		{"ip with bridge", base(`, "network": {"mode": "bridge", "bridge": "br0", "ip": "192.168.122.5"}`), "network.ip requires"},
+		{"bad network ip", base(`, "network": {"mode": "default", "ip": "not-an-ip"}`), "IPv4"},
+		{"bad network mac", base(`, "network": {"mode": "default", "mac": "nope"}`), "MAC address"},
 		{"bad graphics type", base(`, "graphics": {"type": "sdl"}`), "graphics.type must be"},
 		{"extra disk no path", base(`, "extra_disks": [{}]`), "extra_disks[0].path is required"},
 		{"bad extra disk device", base(`, "extra_disks": [{"path": "/tmp/x", "device": "floppy"}]`), "extra_disks[0].device must be"},
@@ -539,5 +542,23 @@ func TestURLSourceSHA256ErrorMentionsSums(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "SHA256SUMS") {
 		t.Fatalf("Validate = %v, want SHA256SUMS hint", err)
+	}
+}
+
+func TestLoadConfigStaticNetwork(t *testing.T) {
+	path := writeConfigFile(t, `{
+		"name": "static",
+		"memory": 1024,
+		"cpus": 1,
+		"source": {"type": "none"},
+		"disk": {"size": 5},
+		"network": {"mode": "default", "ip": "192.168.122.50", "mac": "52:54:00:aa:bb:cc"}
+	}`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Network.IP != "192.168.122.50" || cfg.Network.MAC != "52:54:00:aa:bb:cc" {
+		t.Fatalf("network = %+v", cfg.Network)
 	}
 }

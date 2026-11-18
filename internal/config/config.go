@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,6 +82,7 @@ type Config struct {
 	WindowsPassword string `json:"-"`
 	ConfigDir       string `json:"-"`
 	AssetDir        string `json:"-"`
+	NetworkMAC      string `json:"-"`
 }
 
 // SSHConfig controls the guest account used for shell provisioners.
@@ -215,6 +217,8 @@ type Network struct {
 	Mode   string `json:"mode,omitempty"` // auto, default, user, bridge
 	Bridge string `json:"bridge,omitempty"`
 	Model  string `json:"model,omitempty"`
+	IP     string `json:"ip,omitempty"`
+	MAC    string `json:"mac,omitempty"`
 }
 
 // Graphics controls the guest display.
@@ -330,6 +334,23 @@ func (c *Config) Validate() error {
 	}
 	if c.Network.Mode == networkModeBridge && strings.TrimSpace(c.Network.Bridge) == "" {
 		return fmt.Errorf("network.bridge is required when network.mode is %q", networkModeBridge)
+	}
+	if c.Network.IP != "" {
+		switch c.Network.Mode {
+		case "", networkModeAuto, networkModeDefault:
+		default:
+			return fmt.Errorf("network.ip requires network.mode %q or %q", networkModeDefault, networkModeAuto)
+		}
+		ip := net.ParseIP(strings.TrimSpace(c.Network.IP))
+		if ip == nil || ip.To4() == nil {
+			return fmt.Errorf("network.ip must be an IPv4 address")
+		}
+	}
+	if c.Network.MAC != "" {
+		hw, err := net.ParseMAC(c.Network.MAC)
+		if err != nil || len(hw) != 6 {
+			return fmt.Errorf("network.mac must be a 48-bit MAC address")
+		}
 	}
 
 	switch c.Graphics.Type {

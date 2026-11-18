@@ -217,6 +217,23 @@ answer media.
 | `user` | QEMU user networking |
 | `bridge` | host bridge; requires `bridge` |
 
+Assign a stable address with a persistent DHCP reservation:
+
+```json
+"network": {
+  "mode": "default",
+  "ip": "192.168.122.50",
+  "mac": "52:54:00:aa:bb:cc"
+}
+```
+
+- `ip` requires `mode: "default"` or `"auto"` with system libvirt.
+- `mac` is optional. With `ip` and no `mac`, vmlite derives a stable MAC.
+- The reservation exists before the VM boots and is removed by `destroy`.
+- `vmlite status --json` shows the configured IP immediately.
+- The default network is shared; use unique addresses.
+- Changing `ip` or `mac` requires recreating the VM.
+
 Provisioners require a guest-visible network. Use system mode with `default` or
 a bridge, not `user`.
 

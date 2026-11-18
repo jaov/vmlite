@@ -103,7 +103,9 @@
       "properties": {
         "mode": { "type": "string", "enum": ["auto", "default", "user", "bridge"] },
         "bridge": { "type": "string" },
-        "model": { "type": "string" }
+        "model": { "type": "string" },
+        "ip": { "type": "string", "format": "ipv4" },
+        "mac": { "type": "string", "pattern": "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$" }
       }
     },
     "graphics": {

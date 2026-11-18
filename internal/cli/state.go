@@ -89,6 +89,14 @@ func newState(cfg *Config, layout projectLayout, uri, configHash, uuid string) (
 		st.SSHKeyGenerated = cfg.SSHKeyGenerated
 		st.SSHUser = cfg.SSHUser()
 	}
+	if cfg.NetworkMAC != "" {
+		st.NetworkMAC = cfg.NetworkMAC
+	}
+	if cfg.Network.IP != "" {
+		st.NetworkName = "default"
+		st.NetworkIP = cfg.Network.IP
+		st.IP = cfg.Network.IP
+	}
 	return st, nil
 }
 

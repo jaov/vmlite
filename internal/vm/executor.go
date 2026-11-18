@@ -362,6 +362,9 @@ func buildNetworkArgs(cfg *config.Config, libvirtURI string) ([]string, error) {
 	if strings.TrimSpace(cfg.Network.Model) != "" {
 		spec += ",model=" + cfg.Network.Model
 	}
+	if strings.TrimSpace(cfg.NetworkMAC) != "" {
+		spec += ",mac=" + cfg.NetworkMAC
+	}
 	return []string{"--network", spec}, nil
 }
 
