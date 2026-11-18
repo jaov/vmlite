@@ -19,7 +19,7 @@ func commands() []command {
 	return []command{
 		{
 			Name:    "up",
-			Summary: "Create or start the VM (default)",
+			Summary: "Create or start the VM",
 			Usage:   "vmlite up [options] [config.json]",
 			Flags: func() *flag.FlagSet {
 				fs, _, _, _, _, _ := upFlagSet()
@@ -94,39 +94,42 @@ func commands() []command {
 		{
 			Name:    "start",
 			Summary: "Start a stopped VM",
-			Usage:   "vmlite start [options] [config.json]",
+			Usage:   "vmlite start [options] [name|config.json]",
 			Flags: func() *flag.FlagSet {
 				fs, _, _ := startFlagSet()
 				return fs
 			},
 			Examples: []string{
 				"vmlite start vm.json",
+				"vmlite start dev",
 			},
 		},
 		{
 			Name:    "stop",
 			Summary: "Gracefully stop a running VM",
-			Usage:   "vmlite stop [options] [config.json]",
+			Usage:   "vmlite stop [options] [name|config.json]",
 			Flags: func() *flag.FlagSet {
 				fs, _, _, _, _ := stopFlagSet()
 				return fs
 			},
 			Examples: []string{
 				"vmlite stop vm.json",
-				"vmlite stop --timeout 5m vm.json",
-				"vmlite stop --force vm.json",
+				"vmlite stop dev",
+				"vmlite stop --timeout 5m dev",
+				"vmlite stop --force dev",
 			},
 		},
 		{
 			Name:    "restart",
 			Summary: "Reboot a running VM or start a stopped VM",
-			Usage:   "vmlite restart [options] [config.json]",
+			Usage:   "vmlite restart [options] [name|config.json]",
 			Flags: func() *flag.FlagSet {
 				fs, _, _ := restartFlagSet()
 				return fs
 			},
 			Examples: []string{
 				"vmlite restart vm.json",
+				"vmlite restart dev",
 			},
 		},
 		{
@@ -303,6 +306,7 @@ func writeTopHelp(w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Flags accept either -name or --name.")
 	fmt.Fprintln(w, "Run 'vmlite help <command>' for command flags and examples.")
+	fmt.Fprintln(w, "Start, stop, and restart also accept a managed VM name instead of a config path.")
 }
 
 func writeCommandHelp(w io.Writer, cmd command) {

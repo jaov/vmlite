@@ -1,7 +1,7 @@
 # fish completion for vmlite
 complete -c vmlite -f
 
-complete -c vmlite -n '__fish_use_subcommand' -a up -d 'Create or start the VM (default)'
+complete -c vmlite -n '__fish_use_subcommand' -a up -d 'Create or start the VM'
 complete -c vmlite -n '__fish_use_subcommand' -a init -d 'Write a starter config from an example template'
 complete -c vmlite -n '__fish_use_subcommand' -a provision -d 'Run pending provisioners or finish an installer'
 complete -c vmlite -n '__fish_use_subcommand' -a status -d 'Show VM, installer, IP, and provisioner state'
@@ -31,10 +31,11 @@ complete -c vmlite -n '__fish_seen_subcommand_from init' -l force -d 'Overwrite 
 complete -c vmlite -n '__fish_seen_subcommand_from init' -l stdout -d 'Print the config instead of writing it'
 complete -c vmlite -n '__fish_seen_subcommand_from init' -l list -d 'List available templates'
 complete -c vmlite -n '__fish_seen_subcommand_from up' -l recreate -d 'Destroy and recreate the VM'
-complete -c vmlite -n '__fish_seen_subcommand_from up provision install' -l dry-run -d 'Print actions without changing anything'
+complete -c vmlite -n '__fish_seen_subcommand_from up provision start stop restart install' -l dry-run -d 'Print actions without changing anything'
 complete -c vmlite -n '__fish_seen_subcommand_from up' -l offline -d 'Do not download missing images'
 complete -c vmlite -n '__fish_seen_subcommand_from provision' -l force -d 'Rerun once provisioners'
-complete -c vmlite -n '__fish_seen_subcommand_from provision' -l timeout -r -d 'Guest readiness timeout'
+complete -c vmlite -n '__fish_seen_subcommand_from stop' -l force -d 'Destroy if graceful shutdown times out'
+complete -c vmlite -n '__fish_seen_subcommand_from stop' -l timeout -r -d 'Shutdown timeout'
 complete -c vmlite -n '__fish_seen_subcommand_from install doctor' -l prefix -r -d 'Install destination directory'
 complete -c vmlite -n '__fish_seen_subcommand_from install' -l binary -r -F -d 'Local vmlite binary'
 complete -c vmlite -n '__fish_seen_subcommand_from install' -l binary-url -r -d 'Binary download URL'

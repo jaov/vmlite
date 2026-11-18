@@ -3,6 +3,8 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -15,6 +17,25 @@ func powerStateFlagSet(name string) (*flag.FlagSet, *string, *bool) {
 }
 
 func loadPowerState(configPath, stateDir string) (projectLayout, *State, *projectLock, error) {
+	if layout, ok, err := stateLayoutByName(configPath, stateDir); err != nil {
+		return projectLayout{}, nil, nil, err
+	} else if ok {
+		lock, err := acquireProjectLock(layout)
+		if err != nil {
+			return projectLayout{}, nil, nil, err
+		}
+		st, err := loadState(layout.StateFile)
+		if err != nil {
+			lock.Close()
+			return projectLayout{}, nil, nil, err
+		}
+		if st == nil {
+			lock.Close()
+			return projectLayout{}, nil, nil, fmt.Errorf("no state for %q at %s", configPath, layout.StateFile)
+		}
+		return layout, st, lock, nil
+	}
+
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		return projectLayout{}, nil, nil, err
@@ -37,6 +58,50 @@ func loadPowerState(configPath, stateDir string) (projectLayout, *State, *projec
 		return projectLayout{}, nil, nil, fmt.Errorf("no state for %q at %s", cfg.Name, layout.StateFile)
 	}
 	return layout, st, lock, nil
+}
+
+// stateLayoutByName resolves a managed VM name to its state without loading
+// the project's configuration file. It returns ok=false when the argument is
+// a config path rather than a bare VM name.
+func stateLayoutByName(name, stateDir string) (projectLayout, bool, error) {
+	if !isBareVMName(name) {
+		return projectLayout{}, false, nil
+	}
+	if _, err := os.Stat(name); err == nil || !os.IsNotExist(err) {
+		return projectLayout{}, false, nil
+	}
+
+	dir := stateDir
+	if dir == "" {
+		dir = ".vmlite"
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return projectLayout{}, false, fmt.Errorf("resolve state directory %q: %w", dir, err)
+	}
+	stateFile := filepath.Join(absDir, name+".json")
+	st, err := loadState(stateFile)
+	if err != nil {
+		return projectLayout{}, false, err
+	}
+	if st == nil {
+		return projectLayout{}, false, fmt.Errorf("no config file or managed VM named %q (looked for %s)", name, stateFile)
+	}
+
+	return projectLayout{
+		ConfigPath: st.ConfigPath,
+		StateDir:   absDir,
+		StateFile:  stateFile,
+		LockFile:   filepath.Join(absDir, name+".lock"),
+		AssetDir:   filepath.Join(absDir, name),
+	}, true, nil
+}
+
+func isBareVMName(name string) bool {
+	if name == "" || name == "." || name == ".." || strings.HasSuffix(name, ".json") {
+		return false
+	}
+	return !strings.ContainsAny(name, `/\`)
 }
 
 func startFlagSet() (*flag.FlagSet, *string, *bool) {

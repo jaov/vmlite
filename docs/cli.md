@@ -9,8 +9,17 @@ file. State is project-local under `.vmlite/`.
 vmlite [command] [options] [config.json]
 ```
 
-`config.json` defaults to `vm.json`. Running `vmlite` with no command is the
-same as `vmlite up`.
+`config.json` defaults to `vm.json`. Running `vmlite` with no command prints
+help; it does not start a VM.
+
+`start`, `stop`, and `restart` also accept a managed VM name. A bare name is
+resolved from `.vmlite/NAME.json` in the current directory, or from
+`--state-dir`, so the config file is not needed:
+
+```bash
+vmlite stop dev
+vmlite stop --state-dir /path/to/.vmlite dev
+```
 
 Flags belong after the command:
 
@@ -230,7 +239,14 @@ the VM is missing or has not been created.
 Start a stopped VM.
 
 ```text
-vmlite start [--state-dir DIR] [--dry-run] [config.json]
+vmlite start [--state-dir DIR] [--dry-run] [name|config.json]
+```
+
+Examples:
+
+```bash
+vmlite start vm.json
+vmlite start dev
 ```
 
 ### `vmlite stop`
@@ -238,18 +254,33 @@ vmlite start [--state-dir DIR] [--dry-run] [config.json]
 Gracefully stop a running VM with ACPI shutdown.
 
 ```text
-vmlite stop [--state-dir DIR] [--timeout DURATION] [--force] [--dry-run] [config.json]
+vmlite stop [--state-dir DIR] [--timeout DURATION] [--force] [--dry-run] [name|config.json]
 ```
 
 `--timeout` defaults to `2m`. If the guest does not stop in time, `stop` fails
 unless `--force` is passed; `--force` destroys the domain.
+
+The VM can be selected by managed name, so the config file is not required:
+
+```bash
+vmlite stop dev
+vmlite stop --force dev
+vmlite stop --state-dir /path/to/.vmlite dev
+```
 
 ### `vmlite restart`
 
 Reboot a running VM, or start a stopped VM.
 
 ```text
-vmlite restart [--state-dir DIR] [--dry-run] [config.json]
+vmlite restart [--state-dir DIR] [--dry-run] [name|config.json]
+```
+
+Examples:
+
+```bash
+vmlite restart vm.json
+vmlite restart dev
 ```
 
 ### `vmlite ssh`

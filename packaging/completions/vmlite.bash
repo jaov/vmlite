@@ -31,8 +31,14 @@ _vmlite() {
         provision)
             opts="--state-dir --force --dry-run --timeout --help"
             ;;
-        status|start|stop|restart|destroy|list)
+        status|destroy|list)
             opts="--state-dir --help"
+            ;;
+        start|restart)
+            opts="--state-dir --dry-run --help"
+            ;;
+        stop)
+            opts="--state-dir --timeout --force --dry-run --help"
             ;;
         ssh|scp|console)
             opts="--state-dir --user --help"

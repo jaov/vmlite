@@ -3,7 +3,7 @@
 _vmlite() {
     local -a commands
     commands=(
-        'up:Create or start the VM (default)'
+        'up:Create or start the VM'
         'init:Write a starter config from an example template'
         'provision:Run pending provisioners or finish an installer'
         'status:Show VM, installer, IP, and provisioner state'
@@ -50,6 +50,20 @@ _vmlite() {
                         '--stdout[print the config instead of writing it]' \
                         '--list[list available templates]' \
                         '*:config:_files'
+                    ;;
+                start|restart)
+                    _arguments \
+                        '--state-dir[state directory]:dir:_files -/' \
+                        '--dry-run[print actions without changing anything]' \
+                        '*:name or config:_files'
+                    ;;
+                stop)
+                    _arguments \
+                        '--state-dir[state directory]:dir:_files -/' \
+                        '--timeout[shutdown timeout]:duration:' \
+                        '--force[destroy if graceful shutdown times out]' \
+                        '--dry-run[print actions without changing anything]' \
+                        '*:name or config:_files'
                     ;;
                 provision)
                     _arguments \

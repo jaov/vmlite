@@ -52,6 +52,23 @@ func TestAllCommandHelp(t *testing.T) {
 	}
 }
 
+func TestNoCommandShowsHelp(t *testing.T) {
+	out, err := captureCommandOutput(t, func() error {
+		return dispatch(nil)
+	})
+	if err != nil {
+		t.Fatalf("dispatch with no command: %v", err)
+	}
+	for _, want := range []string{"vmlite - reproducible local KVM guests", "Usage:", "Commands:", "vmlite help <command>"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no-command help missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Using libvirt connection") {
+		t.Fatalf("no-command dispatch started a VM:\n%s", out)
+	}
+}
+
 func TestHelpUnknownCommand(t *testing.T) {
 	if err := runHelp([]string{"not-a-command"}); !errors.Is(err, errUsage) {
 		t.Fatalf("runHelp = %v, want errUsage", err)

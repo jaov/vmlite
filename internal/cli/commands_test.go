@@ -111,6 +111,50 @@ func TestStartStopRestart(t *testing.T) {
 	})
 }
 
+func TestStartAndStopByVMName(t *testing.T) {
+	t.Run("start", func(t *testing.T) {
+		configPath, stateDir, _ := commandFixture(t)
+		if err := os.Remove(configPath); err != nil {
+			t.Fatalf("remove config: %v", err)
+		}
+		logPath := filepath.Join(t.TempDir(), "virsh.log")
+		fakeVirsh(t, "#!/bin/sh\nprintf '%s\\n' \"$@\" >> "+logPath+"\ncase \"$*\" in *' domstate '*) echo 'shut off';; *' start '*) echo started;; esac\nexit 0\n")
+		if err := runStart([]string{"--state-dir", stateDir, "cmd-test"}); err != nil {
+			t.Fatalf("runStart by name: %v", err)
+		}
+		data, _ := os.ReadFile(logPath)
+		if !strings.Contains(string(data), "start\ncmd-test") {
+			t.Fatalf("virsh start not called by name:\n%s", data)
+		}
+	})
+
+	t.Run("stop", func(t *testing.T) {
+		configPath, stateDir, _ := commandFixture(t)
+		if err := os.Remove(configPath); err != nil {
+			t.Fatalf("remove config: %v", err)
+		}
+		logPath := filepath.Join(t.TempDir(), "virsh.log")
+		stopFlag := filepath.Join(t.TempDir(), "stopped")
+		t.Setenv("STOP_FLAG", stopFlag)
+		fakeVirsh(t, "#!/bin/sh\nprintf '%s\\n' \"$@\" >> "+logPath+"\ncase \"$*\" in *' domstate '*) if [ -f \"$STOP_FLAG\" ]; then echo 'shut off'; else echo running; fi;; *' shutdown '*) : > \"$STOP_FLAG\"; echo shutdown;; esac\nexit 0\n")
+		if err := runStop([]string{"--state-dir", stateDir, "--timeout", "2s", "cmd-test"}); err != nil {
+			t.Fatalf("runStop by name: %v", err)
+		}
+		data, _ := os.ReadFile(logPath)
+		if !strings.Contains(string(data), "shutdown\ncmd-test") {
+			t.Fatalf("virsh shutdown not called by name:\n%s", data)
+		}
+	})
+}
+
+func TestPowerUnknownVMName(t *testing.T) {
+	_, stateDir, _ := commandFixture(t)
+	err := runStop([]string{"--state-dir", stateDir, "missing-vm"})
+	if err == nil || !strings.Contains(err.Error(), "no config file or managed VM") {
+		t.Fatalf("runStop = %v, want unknown VM error", err)
+	}
+}
+
 func TestSSHSCPDryRun(t *testing.T) {
 	configPath, _, _ := commandFixture(t)
 	fakeVirsh(t, "#!/bin/sh\ncase \"$*\" in *' domstate '*) echo running;; esac\nexit 0\n")

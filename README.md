@@ -59,8 +59,9 @@ files. Use `vmlite doctor` to check host readiness.
 ## Quick start
 
 ```bash
+vmlite                        # show help
 vmlite init                   # write a starter vm.json from the cloud-image example
-vmlite up                     # edit source.path first; `vmlite` is an alias for up
+vmlite up                     # edit source.path first
 vmlite up path/to/vm.json
 vmlite status path/to/vm.json
 vmlite status --json vm.json
@@ -78,6 +79,10 @@ vmlite destroy --force vm.json
 
 `vmlite init` writes a starter configuration. Use `--template minimal` for a
 runnable blank VM or `--list` to see all templates.
+
+Power commands accept a managed VM name or a config path. Once a VM exists,
+`vmlite stop dev` resolves `.vmlite/dev.json`, so the config file is not
+required. Use `--state-dir` when running outside the project directory.
 
 A cloud-image configuration:
 
@@ -114,14 +119,14 @@ vmlite validate vm.json
 
 | Command | Purpose |
 |---|---|
-| `up` | create or start the VM (default command) |
+| `up` | create or start the VM |
 | `init` | write a starter `vm.json` from an example template |
 | `provision` | run or rerun provisioners; finish automated installers |
 | `status` | show VM, IP, installer, and provisioner state |
 | `inspect` | show detailed VM, disk, network, and libvirt state |
-| `start` | start a stopped VM |
-| `stop` | gracefully stop a running VM |
-| `restart` | reboot a running VM or start a stopped VM |
+| `start` | start a stopped VM by name or config |
+| `stop` | gracefully stop a running VM by name or config |
+| `restart` | reboot or start a VM by name or config |
 | `ssh` | open a shell or run a guest command |
 | `scp` | copy a host file or directory into the guest |
 | `console` | attach to serial or print VNC details |

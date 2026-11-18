@@ -26,7 +26,7 @@ func Main(args []string) int {
 
 func dispatch(args []string) error {
 	if len(args) == 0 {
-		return runUp(nil)
+		return runHelp(nil)
 	}
 	if args[0] == "help" {
 		return runHelp(args[1:])

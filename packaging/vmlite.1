@@ -11,15 +11,22 @@ State is project-local under
 .I .vmlite/
 next to the configuration file. Running
 .B vmlite
-without a command is the same as
+without a command prints help. Passing a configuration path without a command
+is an implicit
 .BR "vmlite up" .
 .PP
 The default configuration file is
 .IR vm.json .
+.PP
+The
+.BR start ", " stop ", and " restart
+commands also accept a managed VM name, resolved from
+.IR .vmlite/NAME.json ,
+so the configuration file is not required.
 .SH COMMANDS
 .TP
 .B up
-Create or start the VM. This is the default command.
+Create or start the VM.
 .TP
 .B init
 Write a starter JSON configuration from an embedded example template.
@@ -31,13 +38,15 @@ Run pending provisioners, or finish an automated installer.
 Show VM, installer, IP, and provisioner state.
 .TP
 .B start
-Start a stopped VM.
+Start a stopped VM. The argument may be a config path or a managed VM name.
 .TP
 .B stop
-Gracefully stop a running VM.
+Gracefully stop a running VM. The argument may be a config path or a managed VM
+name.
 .TP
 .B restart
-Reboot a running VM or start a stopped VM.
+Reboot a running VM or start a stopped VM. The argument may be a config path or
+a managed VM name.
 .TP
 .B ssh
 Open a shell or run a command in the guest.
@@ -161,12 +170,28 @@ next to the configuration. Downloaded media is cached under
 .I vm.json
 Default configuration file.
 .TP
+.I .vmlite/NAME.json
+Managed state for the VM named
+.IR NAME .
+Power commands can use
+.I NAME
+directly instead of the configuration path.
+.TP
 .I .vmlite/
 Project-local state, disks, seeds, keys, and installer media.
 .TP
 .I ~/.cache/vmlite/
 Default cache for downloaded cloud images and installer media.
 .SH EXAMPLES
+Show help:
+.PP
+.RS
+.nf
+vmlite
+vmlite help stop
+.fi
+.RE
+.PP
 Create a starter configuration:
 .PP
 .RS
@@ -182,6 +207,15 @@ Create or start a VM:
 .nf
 vmlite up
 vmlite up --connect qemu:///system vm.json
+.fi
+.RE
+.PP
+Stop a managed VM by name:
+.PP
+.RS
+.nf
+vmlite stop dev
+vmlite stop --force dev
 .fi
 .RE
 .PP
