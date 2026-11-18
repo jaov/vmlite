@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -327,6 +328,16 @@ func runStatus(args []string) error {
 	}
 	stateText = strings.TrimSpace(stateText)
 	running := strings.Contains(stateText, "running")
+	if running && st.IP == "" {
+		for _, address := range domainAddresses(st.LibvirtURI, st.Name) {
+			if ip := net.ParseIP(address); ip != nil && ip.To4() != nil {
+				st.IP = address
+				st.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+				_ = saveState(layout.StateFile, st)
+				break
+			}
+		}
+	}
 
 	if *jsonOut {
 		if err := writeStatusJSON(os.Stdout, statusJSON{

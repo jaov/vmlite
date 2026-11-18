@@ -8,6 +8,40 @@ import (
 	"testing"
 )
 
+func TestStatusFillsLiveIP(t *testing.T) {
+	configPath, stateDir, stateFile := commandFixture(t)
+	st, err := loadState(stateFile)
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	st.IP = ""
+	if err := saveState(stateFile, st); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+	fakeVirsh(t, "#!/bin/sh\ncase \"$*\" in *' domstate '*) echo running;; *' domifaddr '*) echo ' vnet0 52:54:00:aa:bb:cc ipv4 192.0.2.77/24';; esac\nexit 0\n")
+
+	out, err := captureCommandOutput(t, func() error {
+		return runStatus([]string{"--json", "--state-dir", stateDir, configPath})
+	})
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	var status statusJSON
+	if err := json.Unmarshal([]byte(out), &status); err != nil {
+		t.Fatalf("parse status JSON: %v\n%s", err, out)
+	}
+	if status.IP != "192.0.2.77" {
+		t.Fatalf("status IP = %q", status.IP)
+	}
+	saved, err := loadState(stateFile)
+	if err != nil {
+		t.Fatalf("load saved state: %v", err)
+	}
+	if saved.IP != "192.0.2.77" {
+		t.Fatalf("saved IP = %q", saved.IP)
+	}
+}
+
 func TestStatusJSONNoState(t *testing.T) {
 	path := writeConfigFile(t, `{
 		"name": "status-json",
