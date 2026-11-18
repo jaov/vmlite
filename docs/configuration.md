@@ -145,6 +145,15 @@ The same fields work for installer/media sources:
 - `vmlite up --offline` refuses to download missing media.
 - `destroy` keeps the cache.
 
+To find a digest, fetch the sibling `SHA256SUMS` file:
+
+```bash
+url=https://cloud-images.ubuntu.com/minimal/releases/noble/release-20261017/ubuntu-24.04-minimal-cloudimg-amd64.img
+curl -fsS "${url%/*}/SHA256SUMS" | grep "$(basename "$url")"
+```
+
+Use the 64-character hex value in `source.sha256`.
+
 ## Disk
 
 ```json

@@ -527,3 +527,17 @@ func TestHashIgnoresRuntimeFields(t *testing.T) {
 		t.Fatal("runtime-only fields changed the config hash")
 	}
 }
+
+func TestURLSourceSHA256ErrorMentionsSums(t *testing.T) {
+	cfg := Config{
+		Name:   "dev",
+		Memory: 1024,
+		CPUs:   1,
+		Source: Source{Type: SourceCloudImage, URL: "https://example.invalid/image.qcow2"},
+		Disk:   Disk{Size: 5},
+	}
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "SHA256SUMS") {
+		t.Fatalf("Validate = %v, want SHA256SUMS hint", err)
+	}
+}

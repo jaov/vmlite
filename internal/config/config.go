@@ -537,7 +537,7 @@ func validateMediaSource(src Source, sourceType string) (bool, error) {
 	}
 	if hasURL {
 		if !validSHA256(src.SHA256) {
-			return false, fmt.Errorf("source.sha256 must be a 64-character hex digest for URL media")
+			return false, fmt.Errorf("source.sha256 must be a 64-character hex digest for URL media; check the SHA256SUMS file next to the URL")
 		}
 	} else if src.SHA256 != "" && !validSHA256(src.SHA256) {
 		return false, fmt.Errorf("source.sha256 must be a 64-character hex digest")
