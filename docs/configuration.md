@@ -136,6 +136,11 @@ The same fields work for installer/media sources:
 - Local media with `sha256` is verified on use.
 - Cached media is verified on every use.
 - Default cache is `~/.cache/vmlite`.
+- `cache` is a directory. URL media is stored as
+  `<first 16 hex of sha256>-<URL basename>`.
+- To reuse a pre-downloaded file, set `source.path` to the file. Alternatively,
+  copy it to the generated cache path and use `--offline`.
+- There are no cache management subcommands yet; remove files manually.
 - `vmlite up --offline` refuses to download missing media.
 - `destroy` keeps the cache.
 
@@ -245,6 +250,22 @@ a bridge, not `user`.
   emitted as `$env:NAME = 'value'` lines for PowerShell.
 - The `once` hash includes script contents, environment values, and uploaded
   file contents.
+
+### Provisioner lifecycle
+
+- A new `cloud_image` or `disk` VM runs provisioners during its first `up`.
+- Later `up` calls do not rerun provisioners; use `vmlite provision`.
+- Installer sources run provisioners through `vmlite provision` after the
+  installer finishes.
+- `run: once` runs when its hash changes. `vmlite provision --force` reruns it
+  even when the hash matches.
+- `run: always` runs on every `vmlite provision` and during first-creation
+  provisioning.
+- Uploads are applied only when the provisioner runs. A skipped `once`
+  provisioner does not re-upload its files.
+- Script stdout and stderr are streamed to the terminal.
+- `--timeout` controls IP/SSH readiness, not script runtime. There is no
+  per-provisioner timeout.
 
 `shell` uses `bash -s` with `sudo -n` for non-root users. `powershell` uses
 `powershell -NoProfile -NonInteractive -Command -` without sudo.

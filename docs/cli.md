@@ -323,6 +323,18 @@ vmlite ssh --command 'uname -a' dev
 vmlite ssh --user root dev
 ```
 
+`--command` runs through the remote shell. To send a local multi-line script:
+
+```bash
+vmlite ssh --command 'bash -s' dev < bootstrap.sh
+```
+
+For a daemon, detach its stdio so the SSH command returns:
+
+```bash
+vmlite ssh --command 'setsid sh -c "exec ./server >/var/log/server.log 2>&1" </dev/null >/dev/null 2>&1 &' dev
+```
+
 ### `vmlite scp`
 
 Copy a host file or directory into the guest.
