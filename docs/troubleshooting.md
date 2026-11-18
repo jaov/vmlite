@@ -97,6 +97,27 @@ vmlite console --log vm.json
 `vmlite doctor` also lists libvirt storage pools and marks pools whose target
 path is inside a vmlite state tree.
 
+## QEMU startup failures
+
+If a domain does not start, check the QEMU log and libvirt state:
+
+```bash
+sudo tail -n 100 /var/log/libvirt/qemu/<name>.log
+virsh -c qemu:///system domstate <name>
+vmlite inspect --xml <name>
+sudo journalctl -u libvirtd --no-pager -n 100
+```
+
+Common causes are inaccessible disks, an unmounted state directory, ownership
+or permission problems, and AppArmor denials. For network-mounted state, verify
+the mount is available before the domain starts.
+
+## Low-memory warnings
+
+`virt-install` may warn when requested memory is below its recommendation for
+the selected OS. The warning is advisory; vmlite does not suppress it. Ignore it
+for small test guests or raise `memory` for production workloads.
+
 ## Missing host tools
 
 Install or check tools:

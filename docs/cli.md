@@ -354,6 +354,13 @@ vmlite scp ./app.conf /etc/app.conf dev
 vmlite scp --recursive ./assets /opt/assets dev
 ```
 
+`scp` uploads only. To retrieve files, stream remote stdout through SSH:
+
+```bash
+vmlite ssh --command 'cat /var/log/app.log' dev > app.log
+vmlite ssh --command 'tar -C /var/log/app -cf - .' dev > app-logs.tar
+```
+
 ### `vmlite console`
 
 Attach to the serial console or print graphical display details.
