@@ -3,7 +3,7 @@
 vmlite \- reproducible local KVM/libvirt virtual machines
 .SH SYNOPSIS
 .B vmlite
-[\fICOMMAND\fR] [\fIOPTIONS\fR] [\fICONFIG\fR]
+[\fICOMMAND\fR] [\fIOPTIONS\fR] [\fICONFIG\fR|\fINAME\fR]
 .SH DESCRIPTION
 .B vmlite
 creates and manages local KVM/libvirt guests from a JSON configuration file.
@@ -19,10 +19,18 @@ The default configuration file is
 .IR vm.json .
 .PP
 The
-.BR start ", " stop ", and " restart
-commands also accept a managed VM name, resolved from
-.IR .vmlite/NAME.json ,
-so the configuration file is not required.
+.BR start ", " stop ", " restart ", " status ", " inspect ", " provision ,
+.BR ssh ", " scp ", " console ", and " destroy
+commands accept a managed VM name as well as a config path. A name resolves to
+.IR .vmlite/NAME.json .
+.PP
+State is selected from
+.BR \-\-state\-dir ,
+.BR VMLITE_STATE_DIR ,
+.B state_dir
+in the configuration, or
+.I .vmlite
+next to the configuration file, in that order.
 .SH COMMANDS
 .TP
 .B up
@@ -32,10 +40,12 @@ Create or start the VM.
 Write a starter JSON configuration from an embedded example template.
 .TP
 .B provision
-Run pending provisioners, or finish an automated installer.
+Run pending provisioners, or finish an automated installer. The argument may
+be a config path or a managed VM name.
 .TP
 .B status
-Show VM, installer, IP, and provisioner state.
+Show VM, installer, IP, and provisioner state. The argument may be a config
+path or a managed VM name.
 .TP
 .B start
 Start a stopped VM. The argument may be a config path or a managed VM name.
@@ -49,19 +59,23 @@ Reboot a running VM or start a stopped VM. The argument may be a config path or
 a managed VM name.
 .TP
 .B ssh
-Open a shell or run a command in the guest.
+Open a shell or run a command in the guest. The argument may be a config path
+or a managed VM name.
 .TP
 .B scp
-Copy a host file into the guest.
+Copy a host file into the guest. The argument may be a config path or a managed
+VM name.
 .TP
 .B console
-Attach to the serial console or print graphical details.
+Attach to the serial console or print graphical details. The argument may be a
+config path or a managed VM name.
 .TP
 .B list
 List managed VMs in the state directory.
 .TP
 .B destroy
-Remove the VM and managed files.
+Remove the VM and managed files. The argument may be a config path or a managed
+VM name.
 .TP
 .B validate
 Validate a configuration without changing anything.
@@ -97,7 +111,10 @@ libvirt connection URI. Defaults to
 when available.
 .TP
 .B \-\-state\-dir \fIDIR\fR
-State directory. Defaults to
+State directory. Overrides
+.BR VMLITE_STATE_DIR ,
+.B state_dir
+in the configuration, and the default
 .I .vmlite
 next to the configuration file.
 .TP
@@ -106,6 +123,13 @@ Print actions without changing anything.
 .SH CONFIGURATION
 The configuration is a JSON object. The default file is
 .IR vm.json .
+A
+.B state_dir
+field selects the state directory; relative paths resolve from the
+configuration file. The
+.B VMLITE_STATE_DIR
+environment variable overrides it.
+.PP
 .B vmlite init
 writes a starter file from one of the embedded examples:
 .PP

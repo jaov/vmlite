@@ -11,7 +11,7 @@ import (
 
 func sshFlagSet() (*flag.FlagSet, *string, *string, *string, *time.Duration, *bool) {
 	fs := newStateFlagSet("ssh")
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	stateDir := fs.String("state-dir", "", stateDirFlagHelp)
 	user := fs.String("user", "", "SSH user override")
 	command := fs.String("command", "", "run a non-interactive remote command")
 	timeout := fs.Duration("timeout", 30*time.Second, "maximum wait for guest IP/SSH readiness")
@@ -21,11 +21,22 @@ func sshFlagSet() (*flag.FlagSet, *string, *string, *string, *time.Duration, *bo
 
 func runSSH(args []string) error {
 	fs, stateDir, user, command, timeout, dryRun := sshFlagSet()
-	configPath, err := parseConfigArgs(fs, args)
+	targetArg, err := parsePositional(fs, args)
 	if err != nil {
 		return err
 	}
-	target, err := resolveGuestTarget(configPath, *stateDir, *user, *timeout)
+	t, err := resolveVM(targetArg, *stateDir)
+	if err != nil {
+		return err
+	}
+	if t.State == nil {
+		name := targetArg
+		if t.Config != nil {
+			name = t.Config.Name
+		}
+		return fmt.Errorf("no state for %q at %s", name, t.Layout.StateFile)
+	}
+	target, err := resolveGuestTarget(t.Layout.ConfigPath, t.Layout.StateDir, *user, *timeout)
 	if err != nil {
 		return err
 	}

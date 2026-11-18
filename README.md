@@ -80,9 +80,11 @@ vmlite destroy --force vm.json
 `vmlite init` writes a starter configuration. Use `--template minimal` for a
 runnable blank VM or `--list` to see all templates.
 
-Power commands accept a managed VM name or a config path. Once a VM exists,
-`vmlite stop dev` resolves `.vmlite/dev.json`, so the config file is not
-required. Use `--state-dir` when running outside the project directory.
+All VM commands accept a managed VM name or a config path. Once a VM exists,
+`vmlite status dev`, `vmlite ssh dev`, and `vmlite destroy dev` resolve
+`<state-dir>/dev.json`, so the config file is not required. State is discovered
+from `--state-dir`, `VMLITE_STATE_DIR`, `state_dir` in the config, or `.vmlite`
+next to the config.
 
 A cloud-image configuration:
 
@@ -104,9 +106,10 @@ A cloud-image configuration:
 ```
 
 State and generated assets live in `.vmlite/` next to the config, or under
-`--state-dir`. `up` is idempotent: an unchanged running VM is a no-op, a
-stopped VM is started, and config/connection drift requires `--recreate`.
-`destroy` refuses to remove a running VM unless `--force` is passed.
+`--state-dir`, `VMLITE_STATE_DIR`, or `state_dir` in the config. `up` is
+idempotent: an unchanged running VM is a no-op, a stopped VM is started, and
+config/connection drift requires `--recreate`. `destroy` refuses to remove a
+running VM unless `--force` is passed.
 
 Validate before creating anything:
 

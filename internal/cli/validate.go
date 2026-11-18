@@ -8,9 +8,12 @@ import (
 
 func runValidate(args []string) error {
 	fs := newStateFlagSet("validate")
-	configPath, err := parseConfigArgs(fs, args)
+	configPath, err := parsePositional(fs, args)
 	if err != nil {
 		return err
+	}
+	if configPath == "" {
+		configPath = "vm.json"
 	}
 
 	cfg, err := LoadConfig(configPath)

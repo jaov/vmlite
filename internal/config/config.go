@@ -58,6 +58,7 @@ const (
 // Config describes the virtual machine that vmlite creates.
 type Config struct {
 	Name         string        `json:"name"`
+	StateDir     string        `json:"state_dir,omitempty"`
 	Memory       int           `json:"memory"` // in MiB
 	CPUs         int           `json:"cpus"`
 	OSVariant    string        `json:"os_variant,omitempty"`
@@ -775,9 +776,10 @@ func (c *Config) installerISOPath() (string, error) {
 }
 
 func Hash(cfg *Config) (string, error) {
-	// Provisioning and SSH settings are not VM shape; changing a script must
-	// not require recreating the domain.
+	// Provisioning, SSH, and state-location settings are not VM shape;
+	// changing a script or moving state must not require recreating the domain.
 	clone := *cfg
+	clone.StateDir = ""
 	clone.SSH = SSHConfig{}
 	clone.Provisioners = nil
 	data, err := json.Marshal(&clone)

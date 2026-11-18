@@ -150,9 +150,114 @@ func TestStartAndStopByVMName(t *testing.T) {
 func TestPowerUnknownVMName(t *testing.T) {
 	_, stateDir, _ := commandFixture(t)
 	err := runStop([]string{"--state-dir", stateDir, "missing-vm"})
-	if err == nil || !strings.Contains(err.Error(), "no config file or managed VM") {
+	if err == nil || !strings.Contains(err.Error(), "no VM named") {
 		t.Fatalf("runStop = %v, want unknown VM error", err)
 	}
+}
+
+func TestNameTargets(t *testing.T) {
+	t.Run("status", func(t *testing.T) {
+		configPath, _, _ := commandFixture(t)
+		chdir(t, filepath.Dir(configPath))
+		fakeVirsh(t, "#!/bin/sh\ncase \"$*\" in *' domstate '*) echo running;; esac\nexit 0\n")
+		out, err := captureCommandOutput(t, func() error {
+			return runStatus([]string{"cmd-test"})
+		})
+		if err != nil {
+			t.Fatalf("status by name: %v", err)
+		}
+		if !strings.Contains(out, "Name:  cmd-test") {
+			t.Fatalf("status output:\n%s", out)
+		}
+	})
+
+	t.Run("inspect", func(t *testing.T) {
+		configPath, _, _, _ := inspectFixture(t)
+		chdir(t, filepath.Dir(configPath))
+		fakeInspectTools(t)
+		out, err := captureCommandOutput(t, func() error {
+			return runInspect([]string{"--json", "cmd-test"})
+		})
+		if err != nil {
+			t.Fatalf("inspect by name: %v", err)
+		}
+		var report inspectReport
+		if err := json.Unmarshal([]byte(out), &report); err != nil {
+			t.Fatalf("parse inspect JSON: %v\n%s", err, out)
+		}
+		if report.Name != "cmd-test" {
+			t.Fatalf("report = %+v", report)
+		}
+	})
+
+	t.Run("ssh", func(t *testing.T) {
+		configPath, _, _ := commandFixture(t)
+		chdir(t, filepath.Dir(configPath))
+		fakeVirsh(t, "#!/bin/sh\ncase \"$*\" in *' domstate '*) echo running;; esac\nexit 0\n")
+		out, err := captureCommandOutput(t, func() error {
+			return runSSH([]string{"--dry-run", "--timeout", "0", "--command", "true", "cmd-test"})
+		})
+		if err != nil {
+			t.Fatalf("ssh by name: %v", err)
+		}
+		if !strings.Contains(out, "root@192.0.2.10") {
+			t.Fatalf("ssh output:\n%s", out)
+		}
+	})
+
+	t.Run("scp", func(t *testing.T) {
+		configPath, _, _ := commandFixture(t)
+		chdir(t, filepath.Dir(configPath))
+		fakeVirsh(t, "#!/bin/sh\ncase \"$*\" in *' domstate '*) echo running;; esac\nexit 0\n")
+		local := filepath.Join(t.TempDir(), "payload")
+		if err := os.WriteFile(local, []byte("x"), 0o644); err != nil {
+			t.Fatalf("write local: %v", err)
+		}
+		out, err := captureCommandOutput(t, func() error {
+			return runSCP([]string{"--dry-run", "--timeout", "0", local, "/tmp/payload", "cmd-test"})
+		})
+		if err != nil {
+			t.Fatalf("scp by name: %v", err)
+		}
+		if !strings.Contains(out, "root@192.0.2.10:/tmp/payload") {
+			t.Fatalf("scp output:\n%s", out)
+		}
+	})
+
+	t.Run("console", func(t *testing.T) {
+		configPath, _, _ := commandFixture(t)
+		chdir(t, filepath.Dir(configPath))
+		fakeVirsh(t, "#!/bin/sh\ncase \"$*\" in *' domstate '*) echo running;; *' domdisplay '*) echo vnc://127.0.0.1:0;; esac\nexit 0\n")
+		out, err := captureCommandOutput(t, func() error {
+			return runConsole([]string{"--type", "vnc", "cmd-test"})
+		})
+		if err != nil {
+			t.Fatalf("console by name: %v", err)
+		}
+		if !strings.Contains(out, "VNC: vnc://127.0.0.1:0") {
+			t.Fatalf("console output:\n%s", out)
+		}
+	})
+
+	t.Run("provision", func(t *testing.T) {
+		configPath, _, _ := commandFixture(t)
+		chdir(t, filepath.Dir(configPath))
+		if err := runProvision([]string{"cmd-test"}); err != nil {
+			t.Fatalf("provision by name: %v", err)
+		}
+	})
+
+	t.Run("destroy", func(t *testing.T) {
+		configPath, _, stateFile := commandFixture(t)
+		chdir(t, filepath.Dir(configPath))
+		fakeVirsh(t, "#!/bin/sh\nexit 1\n")
+		if err := runDestroy([]string{"--force", "cmd-test"}); err != nil {
+			t.Fatalf("destroy by name: %v", err)
+		}
+		if _, err := os.Stat(stateFile); !os.IsNotExist(err) {
+			t.Fatalf("state file still exists: %v", err)
+		}
+	})
 }
 
 func TestSSHSCPDryRun(t *testing.T) {

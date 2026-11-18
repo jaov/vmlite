@@ -6,20 +6,32 @@ file. State is project-local under `.vmlite/`.
 ## Synopsis
 
 ```text
-vmlite [command] [options] [config.json]
+vmlite [command] [options] [config.json|name]
 ```
 
 `config.json` defaults to `vm.json`. Running `vmlite` with no command prints
 help; it does not start a VM.
 
-`start`, `stop`, and `restart` also accept a managed VM name. A bare name is
-resolved from `.vmlite/NAME.json` in the current directory, or from
-`--state-dir`, so the config file is not needed:
+State is discovered in this order:
+
+1. `--state-dir`
+2. `VMLITE_STATE_DIR`
+3. `state_dir` in the config, relative to the config file
+4. `.vmlite` next to the config
+
+Every command that operates on an existing VM accepts either a config path or a
+managed VM name. A bare name resolves to `<state-dir>/<name>.json`:
 
 ```bash
-vmlite stop dev
-vmlite stop --state-dir /path/to/.vmlite dev
+vmlite status dev
+vmlite inspect --json dev
+vmlite ssh --command 'uname -a' dev
+vmlite destroy --force dev
 ```
+
+When a name is used without `--state-dir` or `VMLITE_STATE_DIR`, vmlite reads
+`./vm.json` to discover its configured `state_dir`; otherwise it uses
+`./.vmlite`.
 
 Flags belong after the command:
 
@@ -127,7 +139,7 @@ Most templates reference media paths that must be edited before booting. Use
 Run pending provisioners, or finish an automated installer.
 
 ```text
-vmlite provision [--state-dir DIR] [--force] [--dry-run] [--timeout DURATION] [config.json]
+vmlite provision [--state-dir DIR] [--force] [--dry-run] [--timeout DURATION] [name|config.json]
 ```
 
 | Flag | Meaning |
@@ -151,8 +163,9 @@ Examples:
 
 ```bash
 vmlite provision vm.json
-vmlite provision --force vm.json
-vmlite provision --timeout 45m vm.json
+vmlite provision dev
+vmlite provision --force dev
+vmlite provision --timeout 45m dev
 ```
 
 ### `vmlite status`
@@ -160,7 +173,7 @@ vmlite provision --timeout 45m vm.json
 Show VM, installer, IP, and provisioner state.
 
 ```text
-vmlite status [--state-dir DIR] [--json] [config.json]
+vmlite status [--state-dir DIR] [--json] [name|config.json]
 ```
 
 | Flag | Meaning |
@@ -215,7 +228,7 @@ disks and backing chains, media, network interfaces, live addresses, installer
 state, provisioners, and managed paths.
 
 ```text
-vmlite inspect [--state-dir DIR] [--json|--xml] [config.json]
+vmlite inspect [--state-dir DIR] [--json|--xml] [name|config.json]
 ```
 
 | Flag | Meaning |
@@ -227,8 +240,9 @@ Examples:
 
 ```bash
 vmlite inspect vm.json
-vmlite inspect --json vm.json
-vmlite inspect --xml vm.json > domain.xml
+vmlite inspect dev
+vmlite inspect --json dev
+vmlite inspect --xml dev > domain.xml
 ```
 
 `inspect` is read-only and never changes domain or pool state. It exits `3` when
@@ -288,7 +302,7 @@ vmlite restart dev
 Open an interactive shell or run one remote command.
 
 ```text
-vmlite ssh [--state-dir DIR] [--user USER] [--command COMMAND] [--timeout DURATION] [--dry-run] [config.json]
+vmlite ssh [--state-dir DIR] [--user USER] [--command COMMAND] [--timeout DURATION] [--dry-run] [name|config.json]
 ```
 
 - Resolves the guest IP from state and waits up to `--timeout` (default `30s`)
@@ -301,8 +315,9 @@ Examples:
 
 ```bash
 vmlite ssh vm.json
-vmlite ssh --command 'uname -a' vm.json
-vmlite ssh --user root vm.json
+vmlite ssh dev
+vmlite ssh --command 'uname -a' dev
+vmlite ssh --user root dev
 ```
 
 ### `vmlite scp`
@@ -310,14 +325,15 @@ vmlite ssh --user root vm.json
 Copy a host file or directory into the guest.
 
 ```text
-vmlite scp [--state-dir DIR] [--user USER] [--timeout DURATION] [--recursive] [--dry-run] <local> <remote> [config.json]
+vmlite scp [--state-dir DIR] [--user USER] [--timeout DURATION] [--recursive] [--dry-run] <local> <remote> [name|config.json]
 ```
 
 Examples:
 
 ```bash
 vmlite scp ./app.conf /etc/app.conf vm.json
-vmlite scp --recursive ./assets /opt/assets vm.json
+vmlite scp ./app.conf /etc/app.conf dev
+vmlite scp --recursive ./assets /opt/assets dev
 ```
 
 ### `vmlite console`
@@ -325,7 +341,7 @@ vmlite scp --recursive ./assets /opt/assets vm.json
 Attach to the serial console or print graphical display details.
 
 ```text
-vmlite console [--state-dir DIR] [--type auto|serial|vnc] [--log] [--log-file PATH] [--dry-run] [config.json]
+vmlite console [--state-dir DIR] [--type auto|serial|vnc] [--log] [--log-file PATH] [--dry-run] [name|config.json]
 ```
 
 - `auto` prints VNC/SPICE details when a display exists, otherwise attaches to
@@ -337,6 +353,15 @@ vmlite console [--state-dir DIR] [--type auto|serial|vnc] [--log] [--log-file PA
 - Serial logging uses the host `script` utility and requires `--type serial`
   or a serial `auto` console.
 
+Examples:
+
+```bash
+vmlite console vm.json
+vmlite console dev
+vmlite console --type vnc dev
+vmlite console --log dev
+```
+
 ### `vmlite list`
 
 List managed VMs in a state directory.
@@ -345,20 +370,29 @@ List managed VMs in a state directory.
 vmlite list [--state-dir DIR] [--json]
 ```
 
-Defaults to `.vmlite` in the current directory. Human output includes name,
-state, IP, installer, phase, and provisioned count.
+Defaults to `VMLITE_STATE_DIR`, `state_dir` from `./vm.json` when present, or
+`.vmlite` in the current directory. Human output includes name, state, IP,
+installer, phase, and provisioned count.
 
 
 
 Remove the VM and managed files.
 
 ```text
-vmlite destroy [--state-dir DIR] [--force] [--dry-run] [config.json]
+vmlite destroy [--state-dir DIR] [--force] [--dry-run] [name|config.json]
 ```
 
 `destroy` refuses to remove a running VM unless `--force` is passed. It removes
 the domain, managed disk, seed/installer media, and project asset directory.
 The image cache is kept for fast recreation.
+
+Examples:
+
+```bash
+vmlite destroy vm.json
+vmlite destroy dev
+vmlite destroy --force dev
+```
 
 ### `vmlite validate`
 

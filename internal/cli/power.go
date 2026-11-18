@@ -3,105 +3,34 @@ package cli
 import (
 	"flag"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
 
 func powerStateFlagSet(name string) (*flag.FlagSet, *string, *bool) {
 	fs := newStateFlagSet(name)
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	stateDir := fs.String("state-dir", "", stateDirFlagHelp)
 	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
 	return fs, stateDir, dryRun
 }
 
-func loadPowerState(configPath, stateDir string) (projectLayout, *State, *projectLock, error) {
-	if layout, ok, err := stateLayoutByName(configPath, stateDir); err != nil {
+func loadPowerState(target, stateDir string) (projectLayout, *State, *projectLock, error) {
+	t, err := resolveVM(target, stateDir)
+	if err != nil {
 		return projectLayout{}, nil, nil, err
-	} else if ok {
-		lock, err := acquireProjectLock(layout)
-		if err != nil {
-			return projectLayout{}, nil, nil, err
+	}
+	if t.State == nil {
+		name := target
+		if t.Config != nil {
+			name = t.Config.Name
 		}
-		st, err := loadState(layout.StateFile)
-		if err != nil {
-			lock.Close()
-			return projectLayout{}, nil, nil, err
-		}
-		if st == nil {
-			lock.Close()
-			return projectLayout{}, nil, nil, fmt.Errorf("no state for %q at %s", configPath, layout.StateFile)
-		}
-		return layout, st, lock, nil
+		return projectLayout{}, nil, nil, fmt.Errorf("no state for %q at %s", name, t.Layout.StateFile)
 	}
-
-	cfg, err := LoadConfig(configPath)
+	lock, err := acquireProjectLock(t.Layout)
 	if err != nil {
 		return projectLayout{}, nil, nil, err
 	}
-	layout, err := newProjectLayout(configPath, stateDir, cfg.Name)
-	if err != nil {
-		return projectLayout{}, nil, nil, err
-	}
-	lock, err := acquireProjectLock(layout)
-	if err != nil {
-		return projectLayout{}, nil, nil, err
-	}
-	st, err := loadState(layout.StateFile)
-	if err != nil {
-		lock.Close()
-		return projectLayout{}, nil, nil, err
-	}
-	if st == nil {
-		lock.Close()
-		return projectLayout{}, nil, nil, fmt.Errorf("no state for %q at %s", cfg.Name, layout.StateFile)
-	}
-	return layout, st, lock, nil
-}
-
-// stateLayoutByName resolves a managed VM name to its state without loading
-// the project's configuration file. It returns ok=false when the argument is
-// a config path rather than a bare VM name.
-func stateLayoutByName(name, stateDir string) (projectLayout, bool, error) {
-	if !isBareVMName(name) {
-		return projectLayout{}, false, nil
-	}
-	if _, err := os.Stat(name); err == nil || !os.IsNotExist(err) {
-		return projectLayout{}, false, nil
-	}
-
-	dir := stateDir
-	if dir == "" {
-		dir = ".vmlite"
-	}
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return projectLayout{}, false, fmt.Errorf("resolve state directory %q: %w", dir, err)
-	}
-	stateFile := filepath.Join(absDir, name+".json")
-	st, err := loadState(stateFile)
-	if err != nil {
-		return projectLayout{}, false, err
-	}
-	if st == nil {
-		return projectLayout{}, false, fmt.Errorf("no config file or managed VM named %q (looked for %s)", name, stateFile)
-	}
-
-	return projectLayout{
-		ConfigPath: st.ConfigPath,
-		StateDir:   absDir,
-		StateFile:  stateFile,
-		LockFile:   filepath.Join(absDir, name+".lock"),
-		AssetDir:   filepath.Join(absDir, name),
-	}, true, nil
-}
-
-func isBareVMName(name string) bool {
-	if name == "" || name == "." || name == ".." || strings.HasSuffix(name, ".json") {
-		return false
-	}
-	return !strings.ContainsAny(name, `/\`)
+	return t.Layout, t.State, lock, nil
 }
 
 func startFlagSet() (*flag.FlagSet, *string, *bool) {
@@ -110,11 +39,11 @@ func startFlagSet() (*flag.FlagSet, *string, *bool) {
 
 func runStart(args []string) error {
 	fs, stateDir, dryRun := startFlagSet()
-	configPath, err := parseConfigArgs(fs, args)
+	target, err := parsePositional(fs, args)
 	if err != nil {
 		return err
 	}
-	layout, st, lock, err := loadPowerState(configPath, *stateDir)
+	layout, st, lock, err := loadPowerState(target, *stateDir)
 	if err != nil {
 		return err
 	}
@@ -147,7 +76,7 @@ func runStart(args []string) error {
 
 func stopFlagSet() (*flag.FlagSet, *string, *time.Duration, *bool, *bool) {
 	fs := newStateFlagSet("stop")
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	stateDir := fs.String("state-dir", "", stateDirFlagHelp)
 	timeout := fs.Duration("timeout", 2*time.Minute, "wait for graceful shutdown before failing")
 	force := fs.Bool("force", false, "destroy the VM if graceful shutdown times out")
 	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
@@ -156,11 +85,11 @@ func stopFlagSet() (*flag.FlagSet, *string, *time.Duration, *bool, *bool) {
 
 func runStop(args []string) error {
 	fs, stateDir, timeout, force, dryRun := stopFlagSet()
-	configPath, err := parseConfigArgs(fs, args)
+	target, err := parsePositional(fs, args)
 	if err != nil {
 		return err
 	}
-	layout, st, lock, err := loadPowerState(configPath, *stateDir)
+	layout, st, lock, err := loadPowerState(target, *stateDir)
 	if err != nil {
 		return err
 	}
@@ -202,11 +131,11 @@ func restartFlagSet() (*flag.FlagSet, *string, *bool) {
 
 func runRestart(args []string) error {
 	fs, stateDir, dryRun := restartFlagSet()
-	configPath, err := parseConfigArgs(fs, args)
+	target, err := parsePositional(fs, args)
 	if err != nil {
 		return err
 	}
-	layout, st, lock, err := loadPowerState(configPath, *stateDir)
+	layout, st, lock, err := loadPowerState(target, *stateDir)
 	if err != nil {
 		return err
 	}

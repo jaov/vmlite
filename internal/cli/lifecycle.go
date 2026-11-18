@@ -34,7 +34,7 @@ func upFlagSet() (*flag.FlagSet, *string, *string, *bool, *bool, *bool) {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	connect := fs.String("connect", "", "libvirt connection URI")
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	stateDir := fs.String("state-dir", "", stateDirFlagHelp)
 	recreate := fs.Bool("recreate", false, "destroy and recreate the VM")
 	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
 	offline := fs.Bool("offline", false, "do not download missing images")
@@ -43,28 +43,20 @@ func upFlagSet() (*flag.FlagSet, *string, *string, *bool, *bool, *bool) {
 
 func runUp(args []string) error {
 	fs, connect, stateDir, recreate, dryRun, offline := upFlagSet()
-	if err := fs.Parse(args); err != nil {
-		return errUsage
+	target, err := parsePositional(fs, args)
+	if err != nil {
+		return err
 	}
-	rest := fs.Args()
-	if len(rest) > 1 {
-		return errUsage
-	}
-	configPath := "vm.json"
-	if len(rest) == 1 {
-		configPath = rest[0]
+	configPath := target
+	if configPath == "" {
+		configPath = "vm.json"
 	}
 
-	cfg, err := LoadConfig(configPath)
+	cfg, layout, err := resolveConfig(configPath, *stateDir)
 	if err != nil {
 		return err
 	}
 	if err := CheckImageTools(cfg); err != nil {
-		return err
-	}
-
-	layout, err := newProjectLayout(configPath, *stateDir, cfg.Name)
-	if err != nil {
 		return err
 	}
 	lock, err := acquireProjectLock(layout)
@@ -245,37 +237,23 @@ func writeStatusJSON(w io.Writer, status statusJSON) error {
 func statusFlagSet() (*flag.FlagSet, *string, *bool) {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	stateDir := fs.String("state-dir", "", stateDirFlagHelp)
 	jsonOut := fs.Bool("json", false, "print machine-readable JSON")
 	return fs, stateDir, jsonOut
 }
 
 func runStatus(args []string) error {
 	fs, stateDir, jsonOut := statusFlagSet()
-	if err := fs.Parse(args); err != nil {
-		return errUsage
-	}
-	rest := fs.Args()
-	if len(rest) > 1 {
-		return errUsage
-	}
-	configPath := "vm.json"
-	if len(rest) == 1 {
-		configPath = rest[0]
+	target, err := parsePositional(fs, args)
+	if err != nil {
+		return err
 	}
 
-	cfg, err := LoadConfig(configPath)
+	t, err := resolveVM(target, *stateDir)
 	if err != nil {
 		return err
 	}
-	layout, err := newProjectLayout(configPath, *stateDir, cfg.Name)
-	if err != nil {
-		return err
-	}
-	st, err := loadState(layout.StateFile)
-	if err != nil {
-		return err
-	}
+	cfg, layout, st := t.Config, t.Layout, t.State
 	if st == nil {
 		if *jsonOut {
 			if err := writeStatusJSON(os.Stdout, statusJSON{
@@ -377,7 +355,7 @@ func runStatus(args []string) error {
 func destroyFlagSet() (*flag.FlagSet, *string, *bool, *bool) {
 	fs := flag.NewFlagSet("destroy", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	stateDir := fs.String("state-dir", "", stateDirFlagHelp)
 	force := fs.Bool("force", false, "destroy a running VM")
 	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
 	return fs, stateDir, force, dryRun
@@ -385,39 +363,28 @@ func destroyFlagSet() (*flag.FlagSet, *string, *bool, *bool) {
 
 func runDestroy(args []string) error {
 	fs, stateDir, force, dryRun := destroyFlagSet()
-	if err := fs.Parse(args); err != nil {
-		return errUsage
-	}
-	rest := fs.Args()
-	if len(rest) > 1 {
-		return errUsage
-	}
-	configPath := "vm.json"
-	if len(rest) == 1 {
-		configPath = rest[0]
+	target, err := parsePositional(fs, args)
+	if err != nil {
+		return err
 	}
 
-	cfg, err := LoadConfig(configPath)
+	t, err := resolveVM(target, *stateDir)
 	if err != nil {
 		return err
 	}
-	layout, err := newProjectLayout(configPath, *stateDir, cfg.Name)
-	if err != nil {
-		return err
+	if t.State == nil {
+		name := target
+		if t.Config != nil {
+			name = t.Config.Name
+		}
+		return fmt.Errorf("no state for %q at %s", name, t.Layout.StateFile)
 	}
-	lock, err := acquireProjectLock(layout)
+	lock, err := acquireProjectLock(t.Layout)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	st, err := loadState(layout.StateFile)
-	if err != nil {
-		return err
-	}
-	if st == nil {
-		return fmt.Errorf("no state for %q at %s", cfg.Name, layout.StateFile)
-	}
-	return destroyState(st, layout, *force, *dryRun)
+	return destroyState(t.State, t.Layout, *force, *dryRun)
 }
 
 func destroyState(st *State, layout projectLayout, force, dryRun bool) error {

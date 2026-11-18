@@ -12,7 +12,7 @@ import (
 
 func scpFlagSet() (*flag.FlagSet, *string, *string, *time.Duration, *bool, *bool) {
 	fs := newStateFlagSet("scp")
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	stateDir := fs.String("state-dir", "", stateDirFlagHelp)
 	user := fs.String("user", "", "SSH user override")
 	timeout := fs.Duration("timeout", 30*time.Second, "maximum wait for guest IP/SSH readiness")
 	recursive := fs.Bool("recursive", false, "copy directories recursively")
@@ -31,9 +31,9 @@ func runSCP(args []string) error {
 	}
 	local := rest[0]
 	remote := rest[1]
-	configPath := "vm.json"
+	targetArg := ""
 	if len(rest) == 3 {
-		configPath = rest[2]
+		targetArg = rest[2]
 	}
 	if _, err := os.Stat(local); err != nil {
 		return fmt.Errorf("local path %q is not accessible: %w", local, err)
@@ -43,7 +43,18 @@ func runSCP(args []string) error {
 		return fmt.Errorf("resolve local path %q: %w", local, err)
 	}
 
-	target, err := resolveGuestTarget(configPath, *stateDir, *user, *timeout)
+	t, err := resolveVM(targetArg, *stateDir)
+	if err != nil {
+		return err
+	}
+	if t.State == nil {
+		name := targetArg
+		if t.Config != nil {
+			name = t.Config.Name
+		}
+		return fmt.Errorf("no state for %q at %s", name, t.Layout.StateFile)
+	}
+	target, err := resolveGuestTarget(t.Layout.ConfigPath, t.Layout.StateDir, *user, *timeout)
 	if err != nil {
 		return err
 	}

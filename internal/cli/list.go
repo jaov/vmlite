@@ -25,7 +25,7 @@ type listEntry struct {
 
 func listFlagSet() (*flag.FlagSet, *string, *bool) {
 	fs := newStateFlagSet("list")
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite in the current directory)")
+	stateDir := fs.String("state-dir", "", "state directory (default: VMLITE_STATE_DIR, state_dir in ./vm.json, or .vmlite in the current directory)")
 	jsonOut := fs.Bool("json", false, "print machine-readable JSON")
 	return fs, stateDir, jsonOut
 }
@@ -38,7 +38,12 @@ func runList(args []string) error {
 	if fs.NArg() > 0 {
 		return errUsage
 	}
-	dir := *stateDir
+	dir := resolveStateDir(*stateDir, nil)
+	if dir == "" {
+		if cfg, err := LoadConfig("vm.json"); err == nil {
+			dir = resolveStateDir("", cfg)
+		}
+	}
 	if dir == "" {
 		dir = ".vmlite"
 	}

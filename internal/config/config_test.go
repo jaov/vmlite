@@ -510,6 +510,7 @@ func TestHashIgnoresRuntimeFields(t *testing.T) {
 	}
 	cfg.AssetDir = "/tmp/assets"
 	cfg.ConfigDir = "/tmp/config"
+	cfg.StateDir = "/tmp/state"
 	cfg.SSHPublicKey = "ssh-ed25519 AAAA"
 	cfg.SSHKeyGenerated = true
 	cfg.WindowsPassword = "secret"

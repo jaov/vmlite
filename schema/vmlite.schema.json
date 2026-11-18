@@ -7,6 +7,7 @@
   "required": ["name", "memory", "cpus", "source", "disk"],
   "properties": {
     "name": { "type": "string", "minLength": 1 },
+    "state_dir": { "type": "string", "minLength": 1, "description": "State directory; relative paths are resolved from the config file" },
     "memory": { "type": "integer", "minimum": 1, "description": "Memory in MiB" },
     "cpus": { "type": "integer", "minimum": 1 },
     "os_variant": { "type": "string" },

@@ -15,7 +15,7 @@ func newStateFlagSet(name string) *flag.FlagSet {
 	return fs
 }
 
-func parseConfigArgs(fs *flag.FlagSet, args []string) (string, error) {
+func parsePositional(fs *flag.FlagSet, args []string) (string, error) {
 	if err := fs.Parse(args); err != nil {
 		return "", errUsage
 	}
@@ -26,12 +26,12 @@ func parseConfigArgs(fs *flag.FlagSet, args []string) (string, error) {
 	if len(rest) == 1 {
 		return rest[0], nil
 	}
-	return "vm.json", nil
+	return "", nil
 }
 
 func provisionFlagSet() (*flag.FlagSet, *string, *bool, *bool, *time.Duration) {
 	fs := newStateFlagSet("provision")
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	stateDir := fs.String("state-dir", "", stateDirFlagHelp)
 	force := fs.Bool("force", false, "rerun once-provisioners")
 	dryRun := fs.Bool("dry-run", false, "print actions without changing anything")
 	timeout := fs.Duration("timeout", 0, "maximum wait for guest readiness (default: 5m, or 30m for SSH-completing installers)")
@@ -40,7 +40,7 @@ func provisionFlagSet() (*flag.FlagSet, *string, *bool, *bool, *time.Duration) {
 
 func runProvision(args []string) error {
 	fs, stateDir, force, dryRun, timeout := provisionFlagSet()
-	configPath, err := parseConfigArgs(fs, args)
+	target, err := parsePositional(fs, args)
 	if err != nil {
 		return err
 	}
@@ -48,25 +48,20 @@ func runProvision(args []string) error {
 		return fmt.Errorf("timeout must not be negative")
 	}
 
-	cfg, err := LoadConfig(configPath)
+	t, err := resolveVM(target, *stateDir)
 	if err != nil {
 		return err
 	}
-	layout, err := newProjectLayout(configPath, *stateDir, cfg.Name)
-	if err != nil {
-		return err
+	if t.State == nil {
+		return fmt.Errorf("no state for %q at %s", t.Config.Name, t.Layout.StateFile)
 	}
-	lock, err := acquireProjectLock(layout)
+	if t.Config == nil {
+		return fmt.Errorf("config %q is required to provision", t.Layout.ConfigPath)
+	}
+	lock, err := acquireProjectLock(t.Layout)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	st, err := loadState(layout.StateFile)
-	if err != nil {
-		return err
-	}
-	if st == nil {
-		return fmt.Errorf("no state for %q at %s", cfg.Name, layout.StateFile)
-	}
-	return provision.ProvisionVM(cfg, st, layout, *force, *dryRun, *timeout)
+	return provision.ProvisionVM(t.Config, t.State, t.Layout, *force, *dryRun, *timeout)
 }

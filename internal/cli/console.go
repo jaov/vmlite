@@ -11,7 +11,7 @@ import (
 
 func consoleFlagSet() (*flag.FlagSet, *string, *string, *bool, *bool, *string) {
 	fs := newStateFlagSet("console")
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	stateDir := fs.String("state-dir", "", stateDirFlagHelp)
 	consoleType := fs.String("type", "auto", "console type: auto, serial, or vnc")
 	dryRun := fs.Bool("dry-run", false, "print actions without attaching")
 	logEnabled := fs.Bool("log", false, "record serial console output to .vmlite/<name>/console.log")
@@ -21,7 +21,7 @@ func consoleFlagSet() (*flag.FlagSet, *string, *string, *bool, *bool, *string) {
 
 func runConsole(args []string) error {
 	fs, stateDir, consoleType, dryRun, logEnabled, logFile := consoleFlagSet()
-	configPath, err := parseConfigArgs(fs, args)
+	target, err := parsePositional(fs, args)
 	if err != nil {
 		return err
 	}
@@ -31,21 +31,18 @@ func runConsole(args []string) error {
 		return fmt.Errorf("console type must be %q, %q, or %q", "auto", "serial", "vnc")
 	}
 
-	cfg, err := LoadConfig(configPath)
+	t, err := resolveVM(target, *stateDir)
 	if err != nil {
 		return err
 	}
-	layout, err := newProjectLayout(configPath, *stateDir, cfg.Name)
-	if err != nil {
-		return err
+	if t.State == nil {
+		name := target
+		if t.Config != nil {
+			name = t.Config.Name
+		}
+		return fmt.Errorf("no state for %q at %s", name, t.Layout.StateFile)
 	}
-	st, err := loadState(layout.StateFile)
-	if err != nil {
-		return err
-	}
-	if st == nil {
-		return fmt.Errorf("no state for %q at %s", cfg.Name, layout.StateFile)
-	}
+	layout, st := t.Layout, t.State
 	text, exists := domainStatus(st.LibvirtURI, st.Name)
 	if !exists {
 		return fmt.Errorf("VM %q is missing", st.Name)

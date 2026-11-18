@@ -45,6 +45,7 @@ Example configurations live in `examples/`.
 | Field | Type | Meaning |
 |---|---|---|
 | `name` | string | VM/domain name; required |
+| `state_dir` | string | state directory; relative paths resolve from the config file |
 | `memory` | int | memory in MiB |
 | `cpus` | int | vCPU count |
 | `os_variant` | string | libvirt/osinfo variant, e.g. `ubuntu24.04`, `win11` |
@@ -299,7 +300,17 @@ If `admin_password` is omitted, vmlite generates one and writes it to
 
 ## State
 
-Managed files live in `.vmlite/` next to the config, or under `--state-dir`:
+Managed files live in `.vmlite/` next to the config by default. The location is
+selected in this order:
+
+1. `--state-dir`
+2. `VMLITE_STATE_DIR`
+3. `state_dir` in the config, relative to the config file
+4. `.vmlite` next to the config
+
+```json
+"state_dir": "/var/lib/vmlite/dev"
+```
 
 ```text
 .vmlite/

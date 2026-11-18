@@ -88,7 +88,7 @@ type qemuImgInfo struct {
 
 func inspectFlagSet() (*flag.FlagSet, *string, *bool, *bool) {
 	fs := newStateFlagSet("inspect")
-	stateDir := fs.String("state-dir", "", "state directory (default: .vmlite next to the config)")
+	stateDir := fs.String("state-dir", "", stateDirFlagHelp)
 	jsonOut := fs.Bool("json", false, "print machine-readable JSON")
 	xmlOut := fs.Bool("xml", false, "print the raw libvirt domain XML")
 	return fs, stateDir, jsonOut, xmlOut
@@ -96,7 +96,7 @@ func inspectFlagSet() (*flag.FlagSet, *string, *bool, *bool) {
 
 func runInspect(args []string) error {
 	fs, stateDir, jsonOut, xmlOut := inspectFlagSet()
-	configPath, err := parseConfigArgs(fs, args)
+	target, err := parsePositional(fs, args)
 	if err != nil {
 		return err
 	}
@@ -104,18 +104,11 @@ func runInspect(args []string) error {
 		return fmt.Errorf("--json and --xml are mutually exclusive")
 	}
 
-	cfg, err := LoadConfig(configPath)
+	t, err := resolveVM(target, *stateDir)
 	if err != nil {
 		return err
 	}
-	layout, err := newProjectLayout(configPath, *stateDir, cfg.Name)
-	if err != nil {
-		return err
-	}
-	st, err := loadState(layout.StateFile)
-	if err != nil {
-		return err
-	}
+	cfg, layout, st := t.Config, t.Layout, t.State
 	if st == nil {
 		report := &inspectReport{
 			Name:       cfg.Name,

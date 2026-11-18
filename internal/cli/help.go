@@ -50,7 +50,7 @@ func commands() []command {
 		{
 			Name:    "provision",
 			Summary: "Run pending provisioners or finish an installer",
-			Usage:   "vmlite provision [options] [config.json]",
+			Usage:   "vmlite provision [options] [name|config.json]",
 			Flags: func() *flag.FlagSet {
 				fs, _, _, _, _ := provisionFlagSet()
 				return fs
@@ -58,14 +58,15 @@ func commands() []command {
 			Examples: []string{
 				"vmlite provision",
 				"vmlite provision vm.json",
-				"vmlite provision --force vm.json",
-				"vmlite provision --timeout 45m vm.json",
+				"vmlite provision dev",
+				"vmlite provision --force dev",
+				"vmlite provision --timeout 45m dev",
 			},
 		},
 		{
 			Name:    "status",
 			Summary: "Show VM, installer, IP, and provisioner state",
-			Usage:   "vmlite status [options] [config.json]",
+			Usage:   "vmlite status [options] [name|config.json]",
 			Flags: func() *flag.FlagSet {
 				fs, _, _ := statusFlagSet()
 				return fs
@@ -73,13 +74,14 @@ func commands() []command {
 			Examples: []string{
 				"vmlite status",
 				"vmlite status vm.json",
-				"vmlite status --json vm.json",
+				"vmlite status dev",
+				"vmlite status --json dev",
 			},
 		},
 		{
 			Name:    "inspect",
 			Summary: "Show detailed VM, disk, network, and libvirt state",
-			Usage:   "vmlite inspect [--json|--xml] [config.json]",
+			Usage:   "vmlite inspect [--json|--xml] [name|config.json]",
 			Flags: func() *flag.FlagSet {
 				fs, _, _, _ := inspectFlagSet()
 				return fs
@@ -87,8 +89,9 @@ func commands() []command {
 			Examples: []string{
 				"vmlite inspect",
 				"vmlite inspect vm.json",
-				"vmlite inspect --json vm.json",
-				"vmlite inspect --xml vm.json",
+				"vmlite inspect dev",
+				"vmlite inspect --json dev",
+				"vmlite inspect --xml dev",
 			},
 		},
 		{
@@ -135,42 +138,44 @@ func commands() []command {
 		{
 			Name:    "ssh",
 			Summary: "Open a shell or run a command in the guest",
-			Usage:   "vmlite ssh [options] [config.json]",
+			Usage:   "vmlite ssh [options] [name|config.json]",
 			Flags: func() *flag.FlagSet {
 				fs, _, _, _, _, _ := sshFlagSet()
 				return fs
 			},
 			Examples: []string{
 				"vmlite ssh vm.json",
-				"vmlite ssh --command 'uname -a' vm.json",
+				"vmlite ssh dev",
+				"vmlite ssh --command 'uname -a' dev",
 			},
 		},
 		{
 			Name:    "scp",
 			Summary: "Copy a host file into the guest",
-			Usage:   "vmlite scp [options] <local> <remote> [config.json]",
+			Usage:   "vmlite scp [options] <local> <remote> [name|config.json]",
 			Flags: func() *flag.FlagSet {
 				fs, _, _, _, _, _ := scpFlagSet()
 				return fs
 			},
 			Examples: []string{
 				"vmlite scp ./app.conf /etc/app.conf vm.json",
-				"vmlite scp --recursive ./assets /opt/assets vm.json",
+				"vmlite scp ./app.conf /etc/app.conf dev",
+				"vmlite scp --recursive ./assets /opt/assets dev",
 			},
 		},
 		{
 			Name:    "console",
 			Summary: "Attach to serial or print graphical details",
-			Usage:   "vmlite console [options] [config.json]",
+			Usage:   "vmlite console [options] [name|config.json]",
 			Flags: func() *flag.FlagSet {
 				fs, _, _, _, _, _ := consoleFlagSet()
 				return fs
 			},
 			Examples: []string{
 				"vmlite console vm.json",
-				"vmlite console --type vnc vm.json",
-				"vmlite console --type serial vm.json",
-				"vmlite console --log vm.json",
+				"vmlite console dev",
+				"vmlite console --type vnc dev",
+				"vmlite console --log dev",
 			},
 		},
 		{
@@ -189,14 +194,15 @@ func commands() []command {
 		{
 			Name:    "destroy",
 			Summary: "Remove the VM and managed files",
-			Usage:   "vmlite destroy [options] [config.json]",
+			Usage:   "vmlite destroy [options] [name|config.json]",
 			Flags: func() *flag.FlagSet {
 				fs, _, _, _ := destroyFlagSet()
 				return fs
 			},
 			Examples: []string{
 				"vmlite destroy vm.json",
-				"vmlite destroy --force vm.json",
+				"vmlite destroy dev",
+				"vmlite destroy --force dev",
 			},
 		},
 		{
@@ -297,7 +303,7 @@ func writeTopHelp(w io.Writer) {
 	fmt.Fprintln(w, "vmlite - reproducible local KVM guests")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  vmlite [command] [options] [config.json]")
+	fmt.Fprintln(w, "  vmlite [command] [options] [config.json|name]")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Commands:")
 	for _, cmd := range commands() {
@@ -306,7 +312,7 @@ func writeTopHelp(w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Flags accept either -name or --name.")
 	fmt.Fprintln(w, "Run 'vmlite help <command>' for command flags and examples.")
-	fmt.Fprintln(w, "Start, stop, and restart also accept a managed VM name instead of a config path.")
+	fmt.Fprintln(w, "VM commands accept a managed VM name instead of a config path.")
 }
 
 func writeCommandHelp(w io.Writer, cmd command) {
